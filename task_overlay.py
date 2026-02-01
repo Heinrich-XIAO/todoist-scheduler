@@ -831,6 +831,25 @@ class TaskOverlayWindow:
             anchor="center",
         )
 
+        # Drag handle (6-dot icon) on the right
+        dot_color = "#666666"
+        dot_r = 1.5
+        dot_gap = 5
+        dot_start_x = width - 16
+        dot_start_y = (height // 2) - 6
+        for row in range(3):
+            for col in range(2):
+                x = dot_start_x + (col * dot_gap)
+                y = dot_start_y + (row * dot_gap)
+                self.progress_canvas.create_oval(
+                    x - dot_r,
+                    y - dot_r,
+                    x + dot_r,
+                    y + dot_r,
+                    fill=dot_color,
+                    outline=dot_color,
+                )
+
         # Task name text directly on progress canvas (no background)
         display_name = (
             self.task_name[:22] + "..." if len(self.task_name) > 22 else self.task_name
@@ -847,36 +866,92 @@ class TaskOverlayWindow:
         )
 
         # Hover buttons - appear on the right side when hovering, drawn on progress canvas
-        # Create button text items on canvas (transparent, like timer text) - left aligned
+        # Create button text items with rounded borders
         system_font = ("SF Mono", 10)
+        btn_font = tkfont.Font(
+            root=self.root, family=system_font[0], size=system_font[1]
+        )
+        btn_height = btn_font.metrics("linespace")
+        btn_pad_x = 6
+        btn_pad_y = 5
+
+        complete_text = "Complete"
+        cancel_text = "Cancel"
+        complete_w = btn_font.measure(complete_text)
+        cancel_w = btn_font.measure(cancel_text)
+        btn_w = max(complete_w, cancel_w)
+
+        complete_x = 15
+        complete_y = height // 2
+        cancel_x = complete_x + btn_w + (btn_pad_x * 2) + 10
+        cancel_y = height // 2
+
+        # Complete button border
+        self.complete_box = create_rounded_rectangle(
+            self.progress_canvas,
+            complete_x - btn_pad_x,
+            complete_y - (btn_height // 2) - btn_pad_y,
+            complete_x + btn_w + btn_pad_x,
+            complete_y + (btn_height // 2) + btn_pad_y,
+            22,
+            fill="#222222",
+            outline="#444444",
+            width=1,
+        )
+        self.progress_canvas.itemconfig(
+            self.complete_box, state="hidden", tags=("btn_complete_box",)
+        )
+
         self.complete_text = self.progress_canvas.create_text(
-            15,
-            height // 2,
-            text="Complete",
+            complete_x + (btn_w / 2),
+            complete_y,
+            text=complete_text,
             font=system_font,
             fill="#ffffff",
             tags="btn_complete",
-            anchor="w",
+            anchor="center",
             state="hidden",
+        )
+
+        # Cancel button border
+        self.cancel_box = create_rounded_rectangle(
+            self.progress_canvas,
+            cancel_x - btn_pad_x,
+            cancel_y - (btn_height // 2) - btn_pad_y,
+            cancel_x + btn_w + btn_pad_x,
+            cancel_y + (btn_height // 2) + btn_pad_y,
+            22,
+            fill="#222222",
+            outline="#444444",
+            width=1,
+        )
+        self.progress_canvas.itemconfig(
+            self.cancel_box, state="hidden", tags=("btn_cancel_box",)
         )
 
         self.cancel_text = self.progress_canvas.create_text(
-            80,
-            height // 2,
-            text="Cancel",
+            cancel_x + (btn_w / 2),
+            cancel_y,
+            text=cancel_text,
             font=system_font,
             fill="#ffffff",
             tags="btn_cancel",
-            anchor="w",
+            anchor="center",
             state="hidden",
         )
 
-        # Bind click events to button text
+        # Bind click events to button text and borders
         self.progress_canvas.tag_bind(
             "btn_complete", "<Button-1>", lambda e: self.on_done()
         )
         self.progress_canvas.tag_bind(
+            "btn_complete_box", "<Button-1>", lambda e: self.on_done()
+        )
+        self.progress_canvas.tag_bind(
             "btn_cancel", "<Button-1>", lambda e: self.on_cancel()
+        )
+        self.progress_canvas.tag_bind(
+            "btn_cancel_box", "<Button-1>", lambda e: self.on_cancel()
         )
         self.progress_canvas.tag_bind(
             "btn_complete",
@@ -933,9 +1008,11 @@ class TaskOverlayWindow:
                 # Hide text elements
                 self.progress_canvas.itemconfig("time_text", state="hidden")
                 self.progress_canvas.itemconfig("task_text", state="hidden")
-                # Show buttons on right side
+                # Show buttons
                 self.progress_canvas.itemconfig("btn_complete", state="normal")
                 self.progress_canvas.itemconfig("btn_cancel", state="normal")
+                self.progress_canvas.itemconfig("btn_complete_box", state="normal")
+                self.progress_canvas.itemconfig("btn_cancel_box", state="normal")
             elif not is_over and self.is_hovering:
                 # Mouse left - schedule hide
                 self.is_hovering = False
@@ -952,6 +1029,8 @@ class TaskOverlayWindow:
                 # Hide buttons
                 self.progress_canvas.itemconfig("btn_complete", state="hidden")
                 self.progress_canvas.itemconfig("btn_cancel", state="hidden")
+                self.progress_canvas.itemconfig("btn_complete_box", state="hidden")
+                self.progress_canvas.itemconfig("btn_cancel_box", state="hidden")
                 # Show text elements again
                 self.progress_canvas.itemconfig("time_text", state="normal")
                 self.progress_canvas.itemconfig("task_text", state="normal")
