@@ -18,3 +18,6 @@ wheels/
 overlay_state.json
 task_analytics.json
 computer_task_cache.json
+
+# Runtime data
+data/

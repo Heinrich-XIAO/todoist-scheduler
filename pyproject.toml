@@ -1,10 +1,22 @@
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
 [project]
-name = "task-updater"
+name = "todoist-scheduler"
 version = "0.1.0"
-description = "Add your description here"
+description = "Todoist task scheduler + notifier + overlay"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "python-dotenv>=1.2.1",
+    "requests>=2.32.0",
     "todoist-api-python>=3.1.0",
 ]
+
+[project.scripts]
+todoist-scheduler = "todoist_scheduler.cli_scheduler:main"
+task-notifier = "todoist_scheduler.cli_notifier:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/todoist_scheduler"]

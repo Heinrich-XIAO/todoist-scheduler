@@ -7,12 +7,13 @@
     
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/heinrich/Documents/task-updater/.venv/bin/python</string>
-        <string>/Users/heinrich/Documents/task-updater/task_notifier.py</string>
+        <string>/Users/heinrich/Documents/todoist-scheduler/.venv/bin/python</string>
+        <string>-m</string>
+        <string>todoist_scheduler.cli_notifier</string>
     </array>
     
     <key>WorkingDirectory</key>
-    <string>/Users/heinrich/Documents/task-updater</string>
+    <string>/Users/heinrich/Documents/todoist-scheduler</string>
     
     <key>RunAtLoad</key>
     <true/>
@@ -20,11 +21,11 @@
     <key>KeepAlive</key>
     <true/>
     
-    <key>StandardOutPath</key>
-    <string>/Users/heinrich/Documents/task-updater/notifier.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/heinrich/Library/Logs/todoist-scheduler/notifier.log</string>
     
-    <key>StandardErrorPath</key>
-    <string>/Users/heinrich/Documents/task-updater/notifier.error.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/heinrich/Library/Logs/todoist-scheduler/notifier.error.log</string>
     
     <key>EnvironmentVariables</key>
     <dict>
