@@ -13,6 +13,7 @@ from todoist_scheduler.core.paths import migrate_legacy_files, project_root
 from todoist_scheduler.notifier.cache import load_cache
 from todoist_scheduler.notifier.classifier import is_computer_task
 from todoist_scheduler.notifier.notifications import send_notification
+from todoist_scheduler.overlay_state import load_state
 from todoist_scheduler.ui.overlay import (
     list_active_tasks,
     resume_task_overlay,
@@ -156,9 +157,51 @@ class TaskNotifier:
                 thread.daemon = True
                 thread.start()
 
+    def check_snoozed_tasks(self) -> None:
+        """Check for tasks that were snoozed and are now ready to reappear."""
+        state = load_state()
+        active_tasks = state.get("active_tasks", {})
+        now = time.time()
+
+        for task_id, task_data in list(active_tasks.items()):
+            if not task_data.get("snoozed"):
+                continue
+
+            snooze_until = task_data.get("snooze_until", 0)
+            if now < snooze_until:
+                continue  # Still snoozing
+
+            # Snooze period is over, re-trigger overlay
+            with self.overlay_lock:
+                if task_id in self.active_overlays:
+                    continue
+                if len(self.active_overlays) > 0:
+                    continue
+                self.active_overlays[task_id] = True
+
+            # Clear snooze flag but keep other state
+            task_data["snoozed"] = False
+            state["active_tasks"][task_id] = task_data
+            from todoist_scheduler.overlay_state import save_state
+
+            save_state(state)
+
+            thread = threading.Thread(
+                target=self._run_overlay,
+                args=(
+                    task_data["task_name"],
+                    task_id,
+                    task_data.get("description", ""),
+                    task_data.get("estimated_duration", 30),
+                ),
+            )
+            thread.daemon = True
+            thread.start()
+
     def run(self) -> None:
         while True:
             self.check_and_notify()
+            self.check_snoozed_tasks()
             time.sleep(CHECK_INTERVAL_SECONDS)
 
 

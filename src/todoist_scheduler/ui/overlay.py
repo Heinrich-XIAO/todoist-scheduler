@@ -10,10 +10,12 @@ import tkinter as tk
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import requests
 from todoist_api_python.api import TodoistAPI
 
 from todoist_scheduler.analytics import record_task_completion
 from todoist_scheduler.overlay_state import load_state, save_state
+from todoist_scheduler.integrations.openrouter import estimate_minutes
 
 
 def play_spotify() -> bool:
@@ -169,6 +171,12 @@ class TaskOverlayWindow:
         self.hover_hide_after_id = None
         self.is_hovering = False
 
+        # Load snooze count from state
+        state = load_state()
+        task_state = state.get("active_tasks", {}).get(task_id, {})
+        self.snooze_count = task_state.get("snooze_count", 0)
+        self.snooze_until = task_state.get("snooze_until", 0)
+
     def format_time(self, seconds: float) -> str:
         minutes = int(seconds // 60)
         seconds = int(seconds % 60)
@@ -177,6 +185,235 @@ class TaskOverlayWindow:
         if hours > 0:
             return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         return f"{minutes:02d}:{seconds:02d}"
+
+    def on_snooze(self):
+        """Handle snooze button press. First snooze is free, subsequent ones require AI justification."""
+        if self.snooze_count == 0:
+            # First snooze is free
+            self._do_snooze()
+        else:
+            # Need AI justification for additional snoozes
+            self._show_justification_dialog()
+
+    def _do_snooze(self):
+        """Execute the snooze: close overlay and schedule reappear in 5 minutes."""
+        self.snooze_count += 1
+        self.snooze_until = time.time() + 300  # 5 minutes
+
+        # Save snooze state
+        state = load_state()
+        state.setdefault("active_tasks", {})
+        state["active_tasks"][self.task_id] = {
+            "task_name": self.task_name,
+            "description": self.description,
+            "elapsed_seconds": self.elapsed_seconds,
+            "mode": self.mode,
+            "last_updated": time.time(),
+            "estimated_duration": self.estimated_duration,
+            "snooze_count": self.snooze_count,
+            "snooze_until": self.snooze_until,
+            "snoozed": True,
+        }
+        save_state(state)
+
+        # Close the overlay without recording completion
+        if self.root:
+            self.root.destroy()
+
+    def _show_justification_dialog(self):
+        """Show a dialog asking user to justify why they need more time."""
+        if not self.root:
+            return
+
+        # Create justification dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Justification Required")
+        dialog.geometry("500x300")
+        dialog.configure(bg="#1a1a1a")
+        dialog.attributes("-topmost", True)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Center the dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (500 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (300 // 2)
+        dialog.geometry(f"500x300+{x}+{y}")
+
+        tk.Label(
+            dialog,
+            text="You've already snoozed once.",
+            font=("Helvetica", 18, "bold"),
+            fg="#ffaa00",
+            bg="#1a1a1a",
+        ).pack(pady=(20, 10))
+
+        tk.Label(
+            dialog,
+            text="Why do you need another 5 minutes?",
+            font=("Helvetica", 14),
+            fg="white",
+            bg="#1a1a1a",
+        ).pack(pady=(0, 10))
+
+        # Text entry for justification
+        justification_var = tk.StringVar()
+        entry = tk.Entry(
+            dialog,
+            textvariable=justification_var,
+            font=("Helvetica", 12),
+            width=40,
+            bg="#333333",
+            fg="white",
+            insertbackground="white",
+        )
+        entry.pack(pady=(0, 20), padx=20)
+        entry.focus()
+
+        result = {"approved": False}
+
+        def submit():
+            justification = justification_var.get().strip()
+            if not justification:
+                return
+
+            # Check with AI if justification is reasonable
+            dialog.destroy()
+            self._check_justification_with_ai(justification, result)
+
+        def cancel():
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog, bg="#1a1a1a")
+        btn_frame.pack(pady=(10, 0))
+
+        create_styled_button(
+            btn_frame,
+            text="SUBMIT",
+            command=submit,
+            bg_color="#00aa00",
+            font=("Helvetica", 14, "bold"),
+            padx=30,
+            pady=10,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        create_styled_button(
+            btn_frame,
+            text="CANCEL",
+            command=cancel,
+            bg_color="#cc0000",
+            font=("Helvetica", 14, "bold"),
+            padx=30,
+            pady=10,
+        ).pack(side=tk.LEFT)
+
+    def _check_justification_with_ai(self, justification: str, result: dict):
+        """Send justification to AI for approval."""
+        api_key = os.getenv("OPENROUTER_KEY")
+
+        if not api_key:
+            # No AI available, just allow the snooze
+            self._show_result_dialog(True, "No AI available - snooze approved", result)
+            return
+
+        proxy_url = os.getenv(
+            "OPENROUTER_PROXY", "https://openrouter.ai/api/v1"
+        ).rstrip("/")
+
+        prompt = (
+            f"Task: {self.task_name}\n"
+            f"Description: {self.description}\n"
+            f"User's justification for needing 5 more minutes: {justification}\n\n"
+            "Is this a reasonable justification? Reply with ONLY 'YES' or 'NO'.\n"
+            "Be understanding but firm. Valid reasons: urgent interruption, need to finish something quick, "
+            "not feeling ready yet. Invalid reasons: laziness, procrastination, no reason given."
+        )
+
+        try:
+            import requests
+
+            response = requests.post(
+                f"{proxy_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://todoist-scheduler.local",
+                    "X-Title": "Todoist Scheduler",
+                },
+                json={
+                    "model": "moonshotai/kimi-k2-5",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a productivity assistant. Be firm but fair. Reply with ONLY 'YES' or 'NO'.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "max_tokens": 10,
+                    "temperature": 0.3,
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+
+            content = response.json()["choices"][0]["message"]["content"].upper()
+            approved = "YES" in content and "NO" not in content
+
+            if approved:
+                self._show_result_dialog(True, "AI approved your justification", result)
+            else:
+                self._show_result_dialog(
+                    False, "AI rejected: time to start the task", result
+                )
+
+        except Exception as e:
+            # On error, allow the snooze
+            print(f"AI check failed: {e}", file=sys.stderr)
+            self._show_result_dialog(True, "AI check failed - snooze approved", result)
+
+    def _show_result_dialog(self, approved: bool, message: str, result: dict):
+        """Show the result of the AI justification check."""
+        if not self.root:
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Result")
+        dialog.geometry("400x200")
+        dialog.configure(bg="#1a1a1a")
+        dialog.attributes("-topmost", True)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (400 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (200 // 2)
+        dialog.geometry(f"400x200+{x}+{y}")
+
+        color = "#00ff00" if approved else "#ff4444"
+
+        tk.Label(
+            dialog,
+            text=message,
+            font=("Helvetica", 16, "bold"),
+            fg=color,
+            bg="#1a1a1a",
+            wraplength=350,
+        ).pack(pady=(40, 30))
+
+        def on_ok():
+            dialog.destroy()
+            if approved:
+                self._do_snooze()
+
+        create_styled_button(
+            dialog,
+            text="OK",
+            command=on_ok,
+            bg_color="#0066cc" if approved else "#666666",
+            font=("Helvetica", 14, "bold"),
+            padx=40,
+            pady=10,
+        ).pack()
 
     def update_timer(self):
         if not self.running or not self.root:
@@ -422,6 +659,23 @@ class TaskOverlayWindow:
                 font=("Helvetica", 36, "bold"),
                 padx=60,
                 pady=20,
+            ).pack(pady=(0, 15))
+
+            snooze_text = (
+                f"WAIT 5 MIN ({self.snooze_count}/1 used)"
+                if self.snooze_count > 0
+                else "WAIT 5 MIN"
+            )
+            snooze_color = "#ff8800" if self.snooze_count > 0 else "#ffaa00"
+            create_styled_button(
+                content,
+                text=snooze_text,
+                command=self.on_snooze,
+                bg_color=snooze_color,
+                fg_color="white",
+                font=("Helvetica", 24, "bold"),
+                padx=40,
+                pady=15,
             ).pack(pady=(0, 15))
 
             tk.Label(

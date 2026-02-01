@@ -57,6 +57,10 @@ No tests
 
 - This repo intentionally has no unit tests for now.
 
+Development Notes for AI Agents
+
+- Always restart the task notifier daemon after making code changes. Use `./scripts/update.sh` to reload the LaunchAgent and apply changes.
+
 Future config
 
 - We may add `config.toml` later; avoid adding it until requested.
