@@ -10,3 +10,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Log files
+*.log
+
+# State and cache files
+overlay_state.json
+task_analytics.json
+computer_task_cache.json

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.todoist-notifier</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/heinrich/Documents/task-updater/.venv/bin/python</string>
+        <string>/Users/heinrich/Documents/task-updater/task_notifier.py</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/Users/heinrich/Documents/task-updater</string>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/heinrich/Documents/task-updater/notifier.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/heinrich/Documents/task-updater/notifier.error.log</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>
