@@ -401,17 +401,24 @@ class TaskNotifier:
             return True
         return False
 
-    def _run_overlay_thread(self, task, mode: str = "full", elapsed_seconds: float = 0):
+    def _run_overlay_thread(
+        self,
+        task,
+        mode: str = "full",
+        elapsed_seconds: float = 0,
+        estimated_duration: int = None,
+    ):
         """Run overlay in background thread."""
         try:
-            # Extract estimated duration from description
+            # Extract estimated duration from description if not provided
             import re
 
             description = getattr(task, "description", "")
-            estimated_duration = 30  # Default
-            duration_match = re.search(r"(\d+)m", description)
-            if duration_match:
-                estimated_duration = int(duration_match.group(1))
+            if estimated_duration is None:
+                estimated_duration = 30  # Default
+                duration_match = re.search(r"(\d+)m", description)
+                if duration_match:
+                    estimated_duration = int(duration_match.group(1))
 
             result = show_task_overlay(
                 task_name=task.content,
@@ -455,7 +462,11 @@ class TaskNotifier:
                     del self.active_overlays[task.id]
 
     def show_task_overlay(
-        self, task, mode: str = "full", elapsed_seconds: float = 0
+        self,
+        task,
+        mode: str = "full",
+        elapsed_seconds: float = 0,
+        estimated_duration: int = None,
     ) -> bool:
         """Show overlay for a task. Returns True if overlay was shown."""
         with self.overlay_lock:
@@ -473,7 +484,8 @@ class TaskNotifier:
 
         # Run overlay in background thread (subprocess handles main thread requirement)
         thread = threading.Thread(
-            target=self._run_overlay_thread, args=(task, mode, elapsed_seconds)
+            target=self._run_overlay_thread,
+            args=(task, mode, elapsed_seconds, estimated_duration),
         )
         thread.daemon = True
         thread.start()
@@ -641,8 +653,8 @@ def main():
     parser.add_argument(
         "--test-task",
         type=str,
-        default="Test Task - Complete me!",
-        help="Task name to use in test mode (default: 'Test Task - Complete me!')",
+        default="Test Task",
+        help="Task name to use in test mode (default: 'Test Task')",
     )
     parser.add_argument(
         "--resume",
@@ -680,13 +692,13 @@ def main():
         print("TEST MODE: Showing test notification and overlay")
         print("=" * 60 + "\n")
 
-        # Create a fake task for testing
+        # Create a fake task for testing with 30 second duration (0.5 minutes)
         class FakeTask:
             def __init__(self, content):
                 self.id = "test-task-123"
                 self.content = content
                 self.priority = 3
-                self.description = "This is a test task with full-screen overlay and Spotify integration. Click START to begin!"
+                self.description = "This is a test task with full-screen overlay and Spotify integration. Click START to begin! 0.5m"
 
         test_task = FakeTask(args.test_task)
         notifier = TaskNotifier(api)
@@ -695,9 +707,9 @@ def main():
         send_notification("Task Due [TEST MODE]", test_task.content)
         print("Test notification sent!")
 
-        # Show overlay
+        # Show overlay for test task with 15 second duration
         print(f"Showing overlay for: {test_task.content}")
-        notifier.show_task_overlay(test_task, mode="full")
+        notifier.show_task_overlay(test_task, mode="full", estimated_duration=0.25)
 
         # Wait for overlay to close
         print("\nWaiting for overlay to close (Ctrl+C to exit)...")
