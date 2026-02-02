@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -83,10 +84,10 @@ def create_styled_button(
     font=None,
     padx=20,
     pady=10,
-    radius=8,
+    radius=None,
 ):
     if font is None:
-        font = ("Helvetica", 14, "bold")
+        font = get_system_font(parent, 14, "bold")
 
     btn_frame = tk.Frame(parent, bg=parent.cget("bg"))
     temp_label = tk.Label(parent, text=text, font=font)
@@ -96,6 +97,8 @@ def create_styled_button(
     temp_label.destroy()
     width = text_width + padx * 2
     height = text_height + pady * 2
+    if radius is None:
+        radius = min(width, height) // 2
 
     canvas = tk.Canvas(
         btn_frame,
@@ -129,6 +132,28 @@ def get_mono_font(root, size: int) -> tuple:
     except Exception:
         pass
     return ("Menlo", size)
+
+
+def get_system_font(root, size: int, weight: str | None = None) -> tuple:
+    candidates = [
+        "SF Pro Text",
+        "SF Pro Display",
+        "Helvetica Neue",
+        "Helvetica",
+        "Arial",
+    ]
+    try:
+        available = set(tkfont.families(root))
+        for name in candidates:
+            if name in available:
+                if weight:
+                    return (name, size, weight)
+                return (name, size)
+    except Exception:
+        pass
+    if weight:
+        return ("Helvetica", size, weight)
+    return ("Helvetica", size)
 
 
 class TaskOverlayWindow:
@@ -243,7 +268,7 @@ class TaskOverlayWindow:
         tk.Label(
             dialog,
             text="You've already snoozed once.",
-            font=("Helvetica", 18, "bold"),
+            font=get_system_font(dialog, 18, "bold"),
             fg="#ffaa00",
             bg="#1a1a1a",
         ).pack(pady=(20, 10))
@@ -251,7 +276,7 @@ class TaskOverlayWindow:
         tk.Label(
             dialog,
             text="Why do you need another 5 minutes?",
-            font=("Helvetica", 14),
+            font=get_system_font(dialog, 14),
             fg="white",
             bg="#1a1a1a",
         ).pack(pady=(0, 10))
@@ -261,7 +286,7 @@ class TaskOverlayWindow:
         entry = tk.Entry(
             dialog,
             textvariable=justification_var,
-            font=("Helvetica", 12),
+            font=get_system_font(dialog, 12),
             width=40,
             bg="#333333",
             fg="white",
@@ -292,7 +317,7 @@ class TaskOverlayWindow:
             text="SUBMIT",
             command=submit,
             bg_color="#00aa00",
-            font=("Helvetica", 14, "bold"),
+            font=get_system_font(dialog, 14, "bold"),
             padx=30,
             pady=10,
         ).pack(side=tk.LEFT, padx=(0, 10))
@@ -302,7 +327,7 @@ class TaskOverlayWindow:
             text="CANCEL",
             command=cancel,
             bg_color="#cc0000",
-            font=("Helvetica", 14, "bold"),
+            font=get_system_font(dialog, 14, "bold"),
             padx=30,
             pady=10,
         ).pack(side=tk.LEFT)
@@ -394,7 +419,7 @@ class TaskOverlayWindow:
         tk.Label(
             dialog,
             text=message,
-            font=("Helvetica", 16, "bold"),
+            font=get_system_font(dialog, 16, "bold"),
             fg=color,
             bg="#1a1a1a",
             wraplength=350,
@@ -410,7 +435,7 @@ class TaskOverlayWindow:
             text="OK",
             command=on_ok,
             bg_color="#0066cc" if approved else "#666666",
-            font=("Helvetica", 14, "bold"),
+            font=get_system_font(dialog, 14, "bold"),
             padx=40,
             pady=10,
         ).pack()
@@ -625,7 +650,7 @@ class TaskOverlayWindow:
         tk.Label(
             content,
             text=self.task_name,
-            font=("Helvetica", 48, "bold"),
+            font=get_system_font(self.root, 48, "bold"),
             fg="white",
             bg="#1a1a1a",
             wraplength=sw - 100,
@@ -635,7 +660,7 @@ class TaskOverlayWindow:
             tk.Label(
                 content,
                 text=self.description,
-                font=("Helvetica", 24),
+                font=get_system_font(self.root, 24),
                 fg="#aaaaaa",
                 bg="#1a1a1a",
                 wraplength=sw - 200,
@@ -645,7 +670,7 @@ class TaskOverlayWindow:
             tk.Label(
                 content,
                 text="Ready to focus?",
-                font=("Helvetica", 32),
+                font=get_system_font(self.root, 32),
                 fg="#00ff00",
                 bg="#1a1a1a",
             ).pack(pady=(0, 30))
@@ -656,7 +681,7 @@ class TaskOverlayWindow:
                 command=self.on_start,
                 bg_color="#00aa00",
                 fg_color="white",
-                font=("Helvetica", 36, "bold"),
+                font=get_system_font(self.root, 36, "bold"),
                 padx=60,
                 pady=20,
             ).pack(pady=(0, 15))
@@ -673,7 +698,7 @@ class TaskOverlayWindow:
                 command=self.on_snooze,
                 bg_color=snooze_color,
                 fg_color="white",
-                font=("Helvetica", 24, "bold"),
+                font=get_system_font(self.root, 24, "bold"),
                 padx=40,
                 pady=15,
             ).pack(pady=(0, 15))
@@ -681,7 +706,7 @@ class TaskOverlayWindow:
             tk.Label(
                 content,
                 text=f"Estimated: {int(self.estimated_duration)} minutes",
-                font=("Helvetica", 18),
+                font=get_system_font(self.root, 18),
                 fg="#888888",
                 bg="#1a1a1a",
             ).pack()
@@ -692,7 +717,7 @@ class TaskOverlayWindow:
                 command=self.on_cancel,
                 bg_color="#666666",
                 fg_color="white",
-                font=("Helvetica", 18),
+                font=get_system_font(self.root, 18),
                 padx=30,
                 pady=10,
             ).pack(pady=(30, 0))
@@ -723,7 +748,7 @@ class TaskOverlayWindow:
             tk.Label(
                 progress_frame,
                 text=f"Goal: {int(self.estimated_duration)} minutes",
-                font=("Helvetica", 14),
+                font=get_system_font(self.root, 14),
                 fg="#888888",
                 bg="#1a1a1a",
             ).pack(pady=(5, 0))
@@ -737,7 +762,7 @@ class TaskOverlayWindow:
                 command=self.on_minimize,
                 bg_color="#0066cc",
                 fg_color="white",
-                font=("Helvetica", 24, "bold"),
+                font=get_system_font(self.root, 24, "bold"),
                 padx=40,
                 pady=15,
             ).pack(pady=(0, 15))
@@ -748,7 +773,7 @@ class TaskOverlayWindow:
                 command=self.on_done,
                 bg_color="#00aa00",
                 fg_color="white",
-                font=("Helvetica", 24, "bold"),
+                font=get_system_font(self.root, 24, "bold"),
                 padx=60,
                 pady=15,
             ).pack(pady=(0, 15))
@@ -759,7 +784,7 @@ class TaskOverlayWindow:
                 command=self.on_cancel,
                 bg_color="#cc0000",
                 fg_color="white",
-                font=("Helvetica", 18),
+                font=get_system_font(self.root, 18),
                 padx=40,
                 pady=10,
             ).pack()
@@ -844,13 +869,13 @@ class TaskOverlayWindow:
             92,
             height // 2,
             text=display_name,
-            font=("SF Mono", 11),
+            font=get_system_font(self.root, 11),
             fill="#ffffff",
             tags="task_text",
             anchor="w",
         )
 
-        system_font = ("SF Mono", 10)
+        system_font = get_system_font(self.root, 10)
         btn_pad_x = 6
         btn_pad_y = 5
         complete_text = "Complete"
