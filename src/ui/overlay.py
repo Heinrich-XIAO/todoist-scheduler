@@ -826,7 +826,7 @@ class TaskOverlayWindow:
             anchor="center",
         )
 
-        dot_color = "#666666"
+        dot_color = "#ffffff"
         dot_r = 1.5
         dot_gap = 5
         dot_start_x = width - 16

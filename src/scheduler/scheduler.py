@@ -11,6 +11,7 @@ from src.scheduler.constants import (
     WEEKDAY_START_HOUR,
     WEEKEND_START_HOUR,
 )
+from src.integrations.openrouter import estimate_priority
 from src.scheduler.duration import TaskDurationEstimator
 
 
@@ -38,6 +39,18 @@ class TaskScheduler:
                 and "#testnotification" in task.labels
             )
         ]
+
+    def apply_auto_priorities(self) -> None:
+        for task in self.tasks:
+            if getattr(task, "priority", 1) != 1:
+                continue
+            new_priority = estimate_priority(
+                getattr(task, "content", "") or "",
+                getattr(task, "description", "") or "",
+            )
+            if new_priority is None:
+                continue
+            self.api.update_task(task.id, priority=new_priority)
 
     def is_task_completed(self, task) -> bool:
         if hasattr(task, "is_completed") and task.is_completed:
@@ -299,6 +312,7 @@ class TaskScheduler:
 
     def run(self) -> None:
         self.fetch_tasks()
+        self.apply_auto_priorities()
         self.build_blocked_times()
 
         rescheduled = self.reschedule_overdue_recurring()

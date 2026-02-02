@@ -62,3 +62,60 @@ def estimate_minutes(
         return max(min_minutes, rounded)
     except Exception:
         return None
+
+
+def estimate_priority(task: str, description: str) -> Optional[int]:
+    api_key = os.getenv("OPENROUTER_KEY")
+    if not api_key:
+        return None
+
+    proxy_url = os.getenv("OPENROUTER_PROXY", "https://openrouter.ai/api/v1").rstrip(
+        "/"
+    )
+
+    prompt = (
+        f"Task: {task}\n"
+        f"Description: {description}\n\n"
+        "Decide if this task is urgent or time-sensitive.\n"
+        "Reply with ONLY one number:\n"
+        "- 4 for urgent (Todoist P1)\n"
+        "- 2 for normal (Todoist P3)\n"
+        "Never reply with 3."
+    )
+
+    try:
+        response = requests.post(
+            f"{proxy_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://todoist-scheduler.local",
+                "X-Title": "Todoist Scheduler",
+            },
+            json={
+                "model": "moonshotai/kimi-k2-5",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You assign Todoist priorities. Reply only with 4 or 2.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                "max_tokens": 10,
+                "temperature": 0.2,
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+
+        content_text = response.json()["choices"][0]["message"]["content"]
+        numbers = re.findall(r"\d+", content_text)
+        if not numbers:
+            return None
+
+        value = int(numbers[0])
+        if value in (2, 4):
+            return value
+        return None
+    except Exception:
+        return None
