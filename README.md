@@ -39,6 +39,8 @@ Run manually:
 ```bash
 uv run todoist-scheduler
 uv run task-notifier
+
+Note: the notifier daemon also runs the scheduler every 5 minutes.
 ```
 
 Test mode (notifier):
@@ -65,6 +67,6 @@ We will likely add a `config.toml` later; for now everything is env-var driven.
 Logs
 
 ```bash
-tail -f ~/Library/Logs/todoist-scheduler/notifier.log
-tail -f ~/Library/Logs/todoist-scheduler/notifier.error.log
+tail -f data/notifier.log
+tail -f data/notifier.error.log
 ```

@@ -13,6 +13,7 @@ from src.core.paths import migrate_legacy_files, project_root
 from src.notifier.cache import load_cache
 from src.notifier.classifier import is_computer_task
 from src.notifier.notifications import send_notification
+from src.scheduler.scheduler import TaskScheduler
 from src.overlay_state import load_state
 from src.ui.overlay import (
     list_active_tasks,
@@ -22,6 +23,7 @@ from src.ui.overlay import (
 
 
 CHECK_INTERVAL_SECONDS = 10  # temporary for testing
+SCHEDULER_INTERVAL_SECONDS = 300
 NOTIFICATION_WINDOW_MINUTES = 2
 NOTIFICATION_COOLDOWN_MINUTES = 5
 
@@ -198,10 +200,32 @@ class TaskNotifier:
             thread.daemon = True
             thread.start()
 
-    def run(self) -> None:
+    def run(
+        self,
+        scheduler: TaskScheduler | None = None,
+        scheduler_interval_seconds: int = SCHEDULER_INTERVAL_SECONDS,
+    ) -> None:
+        next_scheduler_run: float | None = None
+        if scheduler is not None:
+            try:
+                scheduler.run()
+            except Exception:
+                pass
+            next_scheduler_run = time.monotonic() + scheduler_interval_seconds
+
         while True:
             self.check_and_notify()
             self.check_snoozed_tasks()
+
+            if scheduler is not None and next_scheduler_run is not None:
+                now = time.monotonic()
+                if now >= next_scheduler_run:
+                    try:
+                        scheduler.run()
+                    except Exception:
+                        pass
+                    next_scheduler_run = now + scheduler_interval_seconds
+
             time.sleep(CHECK_INTERVAL_SECONDS)
 
 
@@ -296,4 +320,5 @@ def main() -> None:
         resume_task_overlay(args.resume)
         return
 
-    TaskNotifier(api).run()
+    scheduler = TaskScheduler(api)
+    TaskNotifier(api).run(scheduler=scheduler)

@@ -22,6 +22,8 @@ uv run task-notifier --list-active
 uv run task-notifier --resume <task-id>
 ```
 
+Note: the notifier daemon also runs the scheduler every 5 minutes.
+
 LaunchAgent
 
 - The notifier daemon is installed as a LaunchAgent.
