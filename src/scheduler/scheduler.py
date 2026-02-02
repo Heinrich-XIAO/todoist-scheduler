@@ -12,6 +12,7 @@ from src.scheduler.constants import (
     WEEKEND_START_HOUR,
 )
 from src.integrations.openrouter import estimate_priority
+from src.life_blocks import blocked_slots_for_date
 from src.scheduler.duration import TaskDurationEstimator
 
 
@@ -24,6 +25,7 @@ class TaskScheduler:
         self.today = dt.date.today()
         self.blocked_slots: set[dt.datetime] = set()
         self.recurring_slots: set[dt.datetime] = set()
+        self.life_block_cache: dict[dt.date, set[dt.datetime]] = {}
 
     def fetch_tasks(self) -> None:
         self.tasks = []
@@ -78,6 +80,8 @@ class TaskScheduler:
     def is_time_blocked(self, when: dt.datetime) -> bool:
         if when in self.blocked_slots:
             return True
+        if when in self.get_life_blocks_for_date(when.date()):
+            return True
 
         start_hour = WEEKEND_START_HOUR if when.weekday() >= 5 else WEEKDAY_START_HOUR
         if when.time() >= SLEEP_TIME or when.hour < start_hour:
@@ -88,6 +92,17 @@ class TaskScheduler:
     def build_blocked_times(self) -> None:
         self.blocked_slots = set()
         self.recurring_slots = set()
+        self.life_block_cache = {}
+
+        self.blocked_slots |= blocked_slots_for_date(self.today, INTERVAL_MINUTES)
+
+    def get_life_blocks_for_date(self, date: dt.date) -> set[dt.datetime]:
+        cached = self.life_block_cache.get(date)
+        if cached is not None:
+            return cached
+        slots = blocked_slots_for_date(date, INTERVAL_MINUTES)
+        self.life_block_cache[date] = slots
+        return slots
 
         for task in self.tasks:
             if self.is_task_completed(task):

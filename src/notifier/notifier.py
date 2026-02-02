@@ -20,6 +20,7 @@ from src.ui.overlay import (
     resume_task_overlay,
     show_task_overlay,
 )
+from src.ui.blocks import show_blocks_window
 
 
 CHECK_INTERVAL_SECONDS = 10  # temporary for testing
@@ -276,6 +277,11 @@ def main() -> None:
         action="store_true",
         help="List all active (in-progress) tasks and exit",
     )
+    parser.add_argument(
+        "--blocks",
+        action="store_true",
+        help="Open life blocks window and exit",
+    )
     args = parser.parse_args()
 
     if args.list_active:
@@ -291,6 +297,10 @@ def main() -> None:
                 print()
         else:
             print("\nNo active tasks found.")
+        return
+
+    if args.blocks:
+        show_blocks_window()
         return
 
     api = TodoistAPI(get_env_var("TODOIST_KEY"))
