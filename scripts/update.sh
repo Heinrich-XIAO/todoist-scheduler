@@ -6,7 +6,7 @@ PLIST_NAME="com.user.todoist-notifier.plist"
 LAUNCHAGENTS_DIR="$HOME/Library/LaunchAgents"
 LAUNCHD_DOMAIN="gui/$(id -u)"
 JOB_LABEL="com.user.todoist-notifier"
-LOG_DIR="$HOME/Library/Logs/todoist-scheduler"
+LOG_DIR="$ROOT_DIR/data/logs"
 
 echo "Syncing dependencies..."
 cd "$ROOT_DIR"

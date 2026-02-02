@@ -533,7 +533,13 @@ class TaskOverlayWindow:
         try:
             todoist_key = os.getenv("TODOIST_KEY")
             if todoist_key:
-                TodoistAPI(todoist_key).complete_task(self.task_id)
+                api = TodoistAPI(todoist_key)
+                try:
+                    api.get_task(self.task_id)
+                except Exception:
+                    api = None
+                if api is not None:
+                    api.complete_task(self.task_id)
         except Exception as e:
             print(f"Could not complete task in Todoist: {e}", file=sys.stderr)
 
@@ -760,17 +766,6 @@ class TaskOverlayWindow:
                 pady=15,
             ).pack(pady=(0, 15))
 
-            create_styled_button(
-                btn_frame2,
-                text="CANCEL",
-                command=self.on_cancel,
-                bg_color="#cc0000",
-                fg_color="white",
-                font=get_system_font(self.root, 18),
-                padx=40,
-                pady=10,
-            ).pack()
-
         self.root.grab_set()
         self.root.bind("<Escape>", lambda _e: None)
         self.root.bind("<Command-w>", lambda _e: "break")
@@ -861,27 +856,19 @@ class TaskOverlayWindow:
         btn_pad_x = 6
         btn_pad_y = 5
         complete_text = "Complete"
-        cancel_text = "Cancel"
 
         # Avoid creating tkinter.font.Font objects (can crash on shutdown
         # under some Tcl/Tk builds). Measure via canvas bbox instead.
         tmp1 = self.progress_canvas.create_text(
             0, 0, text=complete_text, font=system_font, anchor="nw"
         )
-        tmp2 = self.progress_canvas.create_text(
-            0, 0, text=cancel_text, font=system_font, anchor="nw"
-        )
         bbox1 = self.progress_canvas.bbox(tmp1) or (0, 0, 0, 0)
-        bbox2 = self.progress_canvas.bbox(tmp2) or (0, 0, 0, 0)
         self.progress_canvas.delete(tmp1)
-        self.progress_canvas.delete(tmp2)
-        btn_w = max(bbox1[2] - bbox1[0], bbox2[2] - bbox2[0])
-        btn_height = max(bbox1[3] - bbox1[1], bbox2[3] - bbox2[1])
+        btn_w = bbox1[2] - bbox1[0]
+        btn_height = bbox1[3] - bbox1[1]
 
         complete_x = 15
         complete_y = height // 2
-        cancel_x = complete_x + btn_w + (btn_pad_x * 2) + 10
-        cancel_y = height // 2
 
         self.complete_box = create_rounded_rectangle(
             self.progress_canvas,
@@ -908,42 +895,11 @@ class TaskOverlayWindow:
             state="hidden",
         )
 
-        self.cancel_box = create_rounded_rectangle(
-            self.progress_canvas,
-            cancel_x - btn_pad_x,
-            cancel_y - (btn_height // 2) - btn_pad_y,
-            cancel_x + btn_w + btn_pad_x,
-            cancel_y + (btn_height // 2) + btn_pad_y,
-            22,
-            fill="#222222",
-            outline="#444444",
-            width=1,
-        )
-        self.progress_canvas.itemconfig(
-            self.cancel_box, state="hidden", tags=("btn_cancel_box",)
-        )
-        self.cancel_text = self.progress_canvas.create_text(
-            cancel_x + (btn_w / 2),
-            cancel_y,
-            text=cancel_text,
-            font=system_font,
-            fill="#ffffff",
-            tags="btn_cancel",
-            anchor="center",
-            state="hidden",
-        )
-
         self.progress_canvas.tag_bind(
             "btn_complete", "<Button-1>", lambda _e: self.on_done()
         )
         self.progress_canvas.tag_bind(
             "btn_complete_box", "<Button-1>", lambda _e: self.on_done()
-        )
-        self.progress_canvas.tag_bind(
-            "btn_cancel", "<Button-1>", lambda _e: self.on_cancel()
-        )
-        self.progress_canvas.tag_bind(
-            "btn_cancel_box", "<Button-1>", lambda _e: self.on_cancel()
         )
         self.progress_canvas.tag_bind(
             "btn_complete",
@@ -955,16 +911,6 @@ class TaskOverlayWindow:
             "<Leave>",
             lambda _e: self.progress_canvas.itemconfig("btn_complete", fill="#ffffff"),
         )
-        self.progress_canvas.tag_bind(
-            "btn_cancel",
-            "<Enter>",
-            lambda _e: self.progress_canvas.itemconfig("btn_cancel", fill="#cccccc"),
-        )
-        self.progress_canvas.tag_bind(
-            "btn_cancel",
-            "<Leave>",
-            lambda _e: self.progress_canvas.itemconfig("btn_cancel", fill="#ffffff"),
-        )
 
         self.is_hovering = False
         self.hover_hide_after_id = None
@@ -972,9 +918,7 @@ class TaskOverlayWindow:
         def do_hide():
             if not self.is_hovering and self.root:
                 self.progress_canvas.itemconfig("btn_complete", state="hidden")
-                self.progress_canvas.itemconfig("btn_cancel", state="hidden")
                 self.progress_canvas.itemconfig("btn_complete_box", state="hidden")
-                self.progress_canvas.itemconfig("btn_cancel_box", state="hidden")
                 self.progress_canvas.itemconfig("time_text", state="normal")
                 self.progress_canvas.itemconfig("task_text", state="normal")
             self.hover_hide_after_id = None
@@ -1003,9 +947,7 @@ class TaskOverlayWindow:
                 self.progress_canvas.itemconfig("time_text", state="hidden")
                 self.progress_canvas.itemconfig("task_text", state="hidden")
                 self.progress_canvas.itemconfig("btn_complete", state="normal")
-                self.progress_canvas.itemconfig("btn_cancel", state="normal")
                 self.progress_canvas.itemconfig("btn_complete_box", state="normal")
-                self.progress_canvas.itemconfig("btn_cancel_box", state="normal")
             elif not is_over and self.is_hovering:
                 self.is_hovering = False
                 if self.hover_hide_after_id:
@@ -1079,10 +1021,10 @@ def show_task_overlay(
 ) -> dict:
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_file = f.name
+    overlay_path = Path(__file__).resolve()
     cmd = [
         sys.executable,
-        "-m",
-        "src.ui.overlay",
+        str(overlay_path),
         "--task-name",
         task_name,
         "--task-id",

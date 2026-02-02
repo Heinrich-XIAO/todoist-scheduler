@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import os
+import subprocess
+import sys
 import threading
 import time
 from typing import Dict, Optional
@@ -284,6 +287,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    _warn_if_multiple_instances()
+
     if args.list_active:
         active = list_active_tasks()
         if active:
@@ -332,3 +337,34 @@ def main() -> None:
 
     scheduler = TaskScheduler(api)
     TaskNotifier(api).run(scheduler=scheduler)
+
+
+def _warn_if_multiple_instances() -> None:
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "src.cli_notifier"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return
+
+    if result.returncode not in (0, 1):
+        return
+
+    current_pid = os.getpid()
+    pids = []
+    for line in result.stdout.splitlines():
+        try:
+            pid = int(line.strip())
+        except Exception:
+            continue
+        if pid != current_pid:
+            pids.append(pid)
+
+    if pids:
+        print(
+            f"WARNING: Another notifier instance is running (PIDs: {', '.join(map(str, pids))}).",
+            file=sys.stderr,
+        )

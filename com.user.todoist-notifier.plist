@@ -22,10 +22,10 @@
     <true/>
     
 	<key>StandardOutPath</key>
-	<string>/Users/heinrich/Library/Logs/todoist-scheduler/notifier.log</string>
+	<string>/Users/heinrich/Documents/todoist-scheduler/data/logs/notifier.log</string>
     
 	<key>StandardErrorPath</key>
-	<string>/Users/heinrich/Library/Logs/todoist-scheduler/notifier.error.log</string>
+	<string>/Users/heinrich/Documents/todoist-scheduler/data/logs/notifier.error.log</string>
     
     <key>EnvironmentVariables</key>
     <dict>
