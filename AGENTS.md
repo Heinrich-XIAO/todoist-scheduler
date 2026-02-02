@@ -61,7 +61,8 @@ No tests
 
 Development Notes for AI Agents
 
-- Always restart the task notifier daemon after making code changes. Use `./scripts/update.sh` to reload the LaunchAgent and apply changes.
+- Legacy Python daemon lives in `legacy/`. If you change legacy code or the legacy plist, use `legacy/scripts/update.sh`.
+- The Electron app replaces the daemon and does not require an update script.
 
 Future config
 

@@ -1,72 +1,31 @@
-Todoist Scheduler
+# Electron Control Center
 
-Todoist task scheduler + macOS notifier + focus overlay.
+This Electron app replaces the Python daemons. It runs scheduling, notifications, overlays, and life blocks.
 
-What it does
-
-- Scheduler:
-  - Reschedules overdue recurring tasks to today while preserving recurrence patterns
-  - Schedules non-recurring tasks in 5-minute blocks
-  - Never schedules non-recurring tasks overlapping recurring task slots
-  - Sleep cutoff at 20:45; weekdays start 15:00; weekends start 09:00
-  - No cascade/backfill: tasks running long don't automatically move later tasks
-- Notifier:
-  - Polls Todoist for tasks due today and sends macOS notifications
-  - Opens a full-screen focus overlay with a START button
-  - After START: switches to a small always-on-top corner timer
-
-Setup
-
-Requirements:
-- Python 3.14+
-- uv
-- macOS (osascript/say)
-
-Install deps:
+## Setup
 
 ```bash
-./scripts/setup.sh
+bun install
 ```
 
-Install/update the LaunchAgent daemon:
+## Dev Run
 
 ```bash
-./scripts/update.sh
+bun run dev
 ```
 
-Run manually:
+The app will auto-create a LaunchAgent that runs `bun run dev` on login. You can toggle autostart in the app.
 
-```bash
-uv run todoist-scheduler
-uv run task-notifier
+## Logs
 
-Note: the notifier daemon also runs the scheduler every 5 minutes.
-```
+- `data/logs/electron.log`
+- `data/logs/electron-dev.log`
+- `data/logs/electron-dev.error.log`
 
-Test mode (notifier):
+## Environment
 
-```bash
-uv run task-notifier --test
-```
+Uses `.env.local` from repo root:
 
-Runtime data
-
-- Runtime files live in `data/`.
-- On startup we migrate legacy root files (like `overlay_state.json`, `task_analytics.json`, `computer_task_cache.json`) into `data/` when possible.
-
-Environment
-
-- TODOIST_KEY (required)
-- OPENROUTER_KEY (optional)
-- OPENROUTER_PROXY (optional; for you this should be https://ai.hackclub.com/proxy/v1)
-
-Future configuration
-
-We will likely add a `config.toml` later; for now everything is env-var driven.
-
-Logs
-
-```bash
-tail -f data/notifier.log
-tail -f data/notifier.error.log
-```
+- `TODOIST_KEY` (required)
+- `OPENROUTER_KEY` (optional)
+- `OPENROUTER_PROXY` (optional)

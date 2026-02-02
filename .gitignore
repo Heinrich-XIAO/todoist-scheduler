@@ -21,3 +21,8 @@ computer_task_cache.json
 
 # Runtime data
 data/
+
+# Electron
+node_modules/
+dist/
+.vite/
