@@ -13,16 +13,22 @@ import { Label } from "./ui/label.jsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
+import { Trash } from "./ui/icons.jsx";
 
 const DAYS = [
-  { key: "mon", label: "Mon" },
-  { key: "tue", label: "Tue" },
-  { key: "wed", label: "Wed" },
-  { key: "thu", label: "Thu" },
-  { key: "fri", label: "Fri" },
-  { key: "sat", label: "Sat" },
-  { key: "sun", label: "Sun" },
+  { key: "mon", label: "M" },
+  { key: "tue", label: "T" },
+  { key: "wed", label: "W" },
+  { key: "thu", label: "T" },
+  { key: "fri", label: "F" },
+  { key: "sat", label: "S" },
+  { key: "sun", label: "S" },
 ];
+
+const DAY_LABELS = DAYS.reduce((acc, day) => {
+  acc[day.key] = day.label;
+  return acc;
+}, {});
 
 export default function LifeBlocks() {
   const [state, setState] = useState({ one_off: [], weekly: [] });
@@ -58,7 +64,9 @@ export default function LifeBlocks() {
       });
     });
     state.weekly.forEach((block, index) => {
-      const dayText = (block.days || []).join(",");
+      const dayText = (block.days || [])
+        .map((day) => DAY_LABELS[day] || day)
+        .join(",");
       entries.push({
         kind: "weekly",
         index,
@@ -147,8 +155,14 @@ export default function LifeBlocks() {
                     className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3"
                   >
                     <div className="text-sm">{entry.text}</div>
-                    <Button variant="ghost" onClick={() => onDelete(entry)}>
-                      Delete
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDelete(entry)}
+                      aria-label="Delete block"
+                      title="Delete"
+                    >
+                      <Trash />
                     </Button>
                   </div>
                 ))}
@@ -189,7 +203,7 @@ export default function LifeBlocks() {
                           <Badge
                             key={day.key}
                             variant={days[day.key] ? "default" : "secondary"}
-                            className="cursor-pointer"
+                            className="cursor-pointer rounded-full w-9 h-9 px-0 justify-center text-sm"
                             onClick={() =>
                               setDays({ ...days, [day.key]: !days[day.key] })
                             }

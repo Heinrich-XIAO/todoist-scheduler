@@ -3,6 +3,7 @@ import api from "../bridge.js";
 import { Button } from "./ui/button.jsx";
 import { Input } from "./ui/input.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.jsx";
+import { ArrowDownRight, Calendar, Clock, X } from "./ui/icons.jsx";
 
 function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -27,6 +28,8 @@ export default function Overlay() {
   const [justificationOpen, setJustificationOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [status, setStatus] = useState("");
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -49,6 +52,20 @@ export default function Overlay() {
     return () => clearInterval(id);
   }, [timerStarted]);
 
+  useEffect(() => {
+    if (mode !== "corner") setDragging(false);
+  }, [mode]);
+
+  useEffect(() => {
+    const onMouseUp = async () => {
+      if (!dragging) return;
+      setDragging(false);
+      if (mode === "corner") await api.snapOverlay();
+    };
+    window.addEventListener("mouseup", onMouseUp);
+    return () => window.removeEventListener("mouseup", onMouseUp);
+  }, [dragging, mode]);
+
   const progress = useMemo(() => {
     if (!task?.estimatedMinutes) return 0;
     const total = task.estimatedMinutes * 60;
@@ -60,6 +77,14 @@ export default function Overlay() {
     if (snoozeCount > 0) {
       setJustificationOpen(true);
       return;
+    }
+    if (sessionStarted) {
+      await api.stopTaskSession({
+        taskId: task.id,
+        elapsedSeconds: elapsed,
+        mode,
+      });
+      setSessionStarted(false);
     }
     const res = await api.snoozeTask({
       taskId: task.id,
@@ -80,6 +105,14 @@ export default function Overlay() {
       justification: reason.trim(),
     });
     if (result.approved) {
+      if (sessionStarted) {
+        await api.stopTaskSession({
+          taskId: task.id,
+          elapsedSeconds: elapsed,
+          mode,
+        });
+        setSessionStarted(false);
+      }
       await api.snoozeTask({
         taskId: task.id,
         taskName: task.content,
@@ -96,6 +129,14 @@ export default function Overlay() {
 
   const submitPostpone = async () => {
     if (!reason.trim()) return;
+    if (sessionStarted) {
+      await api.stopTaskSession({
+        taskId: task.id,
+        elapsedSeconds: elapsed,
+        mode,
+      });
+      setSessionStarted(false);
+    }
     const result = await api.postponeTask({
       taskId: task.id,
       taskName: task.content,
@@ -119,12 +160,37 @@ export default function Overlay() {
   }
 
   return (
-    <div className={`h-screen w-screen ${mode === "corner" ? "p-0" : "p-10"}`}>
+    <div
+      className={`h-screen w-screen overlay-drag ${mode === "corner" ? "p-0" : "p-10"}`}
+      onMouseDown={(event) => {
+        if (mode !== "corner") return;
+        const target = event.target;
+        if (target?.closest?.("button, input, textarea")) return;
+        setDragging(true);
+      }}
+    >
+      {dragging && mode === "corner" && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-10 w-[320px] h-[70px] border border-dashed border-amber/70 rounded-2xl pointer-events-none" />
+      )}
       {mode === "corner" ? (
           <div className="h-full w-full bg-zinc-900/90 border border-zinc-700 rounded-2xl flex items-center px-4">
             <div className="text-sm font-semibold mr-4">{formatTime(elapsed)}</div>
             <div className="flex-1 text-sm truncate">{task.content}</div>
-            <Button variant="ghost" size="sm" onClick={() => api.completeTask(task.id)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                if (sessionStarted) {
+                  await api.stopTaskSession({
+                    taskId: task.id,
+                    elapsedSeconds: elapsed,
+                    mode,
+                  });
+                  setSessionStarted(false);
+                }
+                await api.completeTask(task.id);
+              }}
+            >
               Complete
             </Button>
           </div>
@@ -137,15 +203,44 @@ export default function Overlay() {
 
           {!timerStarted ? (
             <div className="flex flex-col items-center gap-4">
-              <Button size="lg" onClick={() => setTimerStarted(true)}>
-                Start Task
-              </Button>
-              <Button size="lg" variant="secondary" onClick={onSnooze}>
-                Wait 5 min
-              </Button>
-              <Button size="lg" variant="default" onClick={() => setPostponeOpen(true)}>
-                Postpone
-              </Button>
+                <Button
+                  size="lg"
+                  onClick={async () => {
+                    setTimerStarted(true);
+                    if (!sessionStarted) {
+                      await api.startTaskSession({
+                        taskId: task.id,
+                        taskName: task.content,
+                        mode,
+                      });
+                      setSessionStarted(true);
+                    }
+                    setMode("corner");
+                    await api.setOverlayMode("corner");
+                  }}
+                >
+                  Start Task
+                </Button>
+              <div className="flex items-center gap-3">
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  onClick={onSnooze}
+                  aria-label="Wait 5 min"
+                  title="Wait 5 min"
+                >
+                  <Clock className="h-5 w-5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  onClick={() => setPostponeOpen(true)}
+                  aria-label="Postpone"
+                  title="Postpone"
+                >
+                  <Calendar className="h-5 w-5" />
+                </Button>
+              </div>
               <div className="text-sm text-zinc-400">Estimated: {task.estimatedMinutes} minutes</div>
             </div>
           ) : (
@@ -159,11 +254,41 @@ export default function Overlay() {
               </div>
               <div className="text-sm text-zinc-400">Goal: {task.estimatedMinutes} minutes</div>
               <div className="flex gap-4">
-                <Button onClick={() => api.setOverlayMode("corner")}>Continue (Corner)</Button>
-                <Button variant="secondary" onClick={() => setPostponeOpen(true)}>
-                  Postpone
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  onClick={async () => {
+                    setMode("corner");
+                    await api.setOverlayMode("corner");
+                  }}
+                  aria-label="Continue in corner"
+                  title="Continue in corner"
+                >
+                  <ArrowDownRight className="h-5 w-5" />
                 </Button>
-                <Button variant="default" onClick={() => api.completeTask(task.id)}>
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  onClick={() => setPostponeOpen(true)}
+                  aria-label="Postpone"
+                  title="Postpone"
+                >
+                  <Calendar className="h-5 w-5" />
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={async () => {
+                    if (sessionStarted) {
+                      await api.stopTaskSession({
+                        taskId: task.id,
+                        elapsedSeconds: elapsed,
+                        mode,
+                      });
+                      setSessionStarted(false);
+                    }
+                    await api.completeTask(task.id);
+                  }}
+                >
                   Done
                 </Button>
               </div>
@@ -197,13 +322,16 @@ export default function Overlay() {
               <div className="flex justify-end gap-3">
                 <Button
                   variant="secondary"
+                  size="icon"
                   onClick={() => {
                     setPostponeOpen(false);
                     setJustificationOpen(false);
                     setReason("");
                   }}
+                  aria-label="Cancel"
+                  title="Cancel"
                 >
-                  Cancel
+                  <X className="h-5 w-5" />
                 </Button>
                 <Button onClick={justificationOpen ? submitJustification : submitPostpone}>
                   Submit

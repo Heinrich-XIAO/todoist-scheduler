@@ -6,9 +6,9 @@
   "main": "main.js",
   "packageManager": "bun@1.1.29",
   "scripts": {
-    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\"",
+    "dev": "concurrently -k \"bun run dev:renderer\" \"bun run dev:main\"",
     "dev:renderer": "vite --config vite.config.js",
-    "dev:main": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "dev:main": "node scripts/dev-electron.mjs",
     "build": "vite build --config vite.config.js",
     "start": "electron ."
   },

@@ -186,6 +186,8 @@ let schedulerStatus = { lastRun: null, nextRun: null, lastError: null };
 let notificationCount = 0;
 let lastNotificationAt = null;
 let tray = null;
+let activeSessions = new Map();
+let overlaySizeInterval = null;
 
 let lastNotificationTime = {};
 let activeOverlays = new Set();
@@ -382,12 +384,22 @@ function createOverlayWindow() {
     },
   });
   overlayWindow.setMenuBarVisibility(false);
-  overlayWindow.loadURL(`${getAppUrl()}#/overlay`);
+  overlayWindow.loadURL(`${getAppUrl()}?page=overlay`);
   overlayWindow.on("closed", () => {
     overlayWindow = null;
     overlayTask = null;
     overlayMode = "full";
+    if (overlaySizeInterval) {
+      clearInterval(overlaySizeInterval);
+      overlaySizeInterval = null;
+    }
   });
+  if (!overlaySizeInterval) {
+    overlaySizeInterval = setInterval(() => {
+      if (!overlayWindow) return;
+      if (overlayMode === "corner") applyCornerBounds();
+    }, 5000);
+  }
 }
 
 function createTray() {
@@ -440,18 +452,31 @@ function ensureOverlayWindow() {
   }
 }
 
+function applyCornerBounds() {
+  if (!overlayWindow) return;
+  overlayWindow.setAlwaysOnTop(true, "screen-saver");
+  overlayWindow.setSize(320, 70);
+  const { width, height } = overlayWindow.getBounds();
+  const display = screen.getPrimaryDisplay();
+  const x = Math.round((display.workAreaSize.width - width) / 2);
+  const y = Math.round(display.workAreaSize.height - height - 40);
+  overlayWindow.setPosition(x, y, false);
+}
+
 function setOverlayMode(mode) {
   overlayMode = mode;
   if (!overlayWindow) return;
+  if (overlayTask && activeSessions.has(overlayTask.id)) {
+    const current = activeSessions.get(overlayTask.id);
+    activeSessions.set(overlayTask.id, { ...current, mode });
+  }
   if (mode === "corner") {
-    overlayWindow.setFullScreen(false);
-    overlayWindow.setAlwaysOnTop(true, "screen-saver");
-    overlayWindow.setSize(320, 90);
-    const { width, height } = overlayWindow.getBounds();
-    const display = screen.getPrimaryDisplay();
-    const x = Math.round((display.workAreaSize.width - width) / 2);
-    const y = Math.round(display.workAreaSize.height - height - 40);
-    overlayWindow.setPosition(x, y, false);
+    if (overlayWindow.isFullScreen()) {
+      overlayWindow.once("leave-full-screen", applyCornerBounds);
+      overlayWindow.setFullScreen(false);
+    } else {
+      applyCornerBounds();
+    }
   } else {
     overlayWindow.setFullScreen(true);
     overlayWindow.setAlwaysOnTop(true, "screen-saver");
@@ -542,6 +567,10 @@ function cachePath() {
   return path.join(DATA_DIR, "computer_task_cache.json");
 }
 
+function timeStatsPath() {
+  return path.join(DATA_DIR, "task_time.json");
+}
+
 function loadOverlayState() {
   return readJson(overlayStatePath(), { active_tasks: {}, completed_tasks: [] });
 }
@@ -564,6 +593,91 @@ function loadCache() {
 
 function saveCache(cache) {
   writeJson(cachePath(), cache);
+}
+
+function loadTimeStats() {
+  return readJson(timeStatsPath(), { tasks: {}, daily: {}, sessions: [] });
+}
+
+function saveTimeStats(stats) {
+  writeJson(timeStatsPath(), stats);
+}
+
+function dateKeyFor(ms) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function addDaily(stats, dateKey, taskId, seconds) {
+  if (!stats.daily[dateKey]) {
+    stats.daily[dateKey] = { total_seconds: 0, tasks: {} };
+  }
+  stats.daily[dateKey].total_seconds += seconds;
+  stats.daily[dateKey].tasks[taskId] =
+    (stats.daily[dateKey].tasks[taskId] || 0) + seconds;
+}
+
+function recordSession(taskId, startMs, endMs, mode, taskName) {
+  if (endMs <= startMs) return;
+  const stats = loadTimeStats();
+  const totalSeconds = Math.floor((endMs - startMs) / 1000);
+
+  stats.tasks[taskId] = stats.tasks[taskId] || {
+    total_seconds: 0,
+    task_name: taskName || "",
+    last_updated: null,
+  };
+  stats.tasks[taskId].total_seconds += totalSeconds;
+  if (taskName) stats.tasks[taskId].task_name = taskName;
+  stats.tasks[taskId].last_updated = new Date(endMs).toISOString();
+
+  let cursor = startMs;
+  while (cursor < endMs) {
+    const endOfDay = new Date(cursor);
+    endOfDay.setHours(23, 59, 59, 999);
+    const sliceEnd = Math.min(endMs, endOfDay.getTime() + 1);
+    const sliceSeconds = Math.floor((sliceEnd - cursor) / 1000);
+    addDaily(stats, dateKeyFor(cursor), taskId, sliceSeconds);
+    cursor = sliceEnd;
+  }
+
+  stats.sessions.push({
+    task_id: taskId,
+    task_name: taskName || "",
+    start: new Date(startMs).toISOString(),
+    end: new Date(endMs).toISOString(),
+    seconds: totalSeconds,
+    mode,
+  });
+
+  saveTimeStats(stats);
+}
+
+function startSession(taskId, taskName, mode) {
+  if (!taskId) return;
+  if (activeSessions.has(taskId)) return;
+  activeSessions.set(taskId, {
+    start: Date.now(),
+    taskName: taskName || "",
+    mode: mode || "full",
+  });
+}
+
+function stopSession(taskId, fallbackSeconds, modeOverride) {
+  if (!taskId) return;
+  const active = activeSessions.get(taskId);
+  let startMs = active?.start;
+  const endMs = Date.now();
+  if (!startMs && fallbackSeconds && fallbackSeconds > 0) {
+    startMs = endMs - fallbackSeconds * 1000;
+  }
+  if (!startMs) return;
+  const mode = modeOverride || active?.mode || "full";
+  const taskName = active?.taskName || "";
+  recordSession(taskId, startMs, endMs, mode, taskName);
+  activeSessions.delete(taskId);
 }
 
 async function todoistFetch(pathname, options = {}) {
@@ -1288,6 +1402,7 @@ ipcMain.handle("set-overlay-mode", (_event, mode) => {
 });
 
 ipcMain.handle("complete-task", async (_event, taskId) => {
+  stopSession(taskId, null, overlayMode);
   try {
     await todoistFetch(`/tasks/${taskId}/close`, { method: "POST" });
   } catch (err) {
@@ -1304,6 +1419,7 @@ ipcMain.handle("complete-task", async (_event, taskId) => {
 
 ipcMain.handle("snooze-task", (_event, payload) => {
   const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes } = payload;
+  stopSession(taskId, elapsedSeconds, mode);
   const state = loadOverlayState();
   state.active_tasks = state.active_tasks || {};
   const prev = state.active_tasks[taskId] || {};
@@ -1328,6 +1444,7 @@ ipcMain.handle("snooze-task", (_event, payload) => {
 
 ipcMain.handle("postpone-task", async (_event, payload) => {
   const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes, reason } = payload;
+  stopSession(taskId, elapsedSeconds, mode);
   const isSleep = await isSleepReason(reason);
   const state = loadOverlayState();
   state.active_tasks = state.active_tasks || {};
@@ -1358,6 +1475,24 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
     }, 1000);
   }
   return { ok: true, sleep: isSleep };
+});
+
+ipcMain.handle("start-task-session", (_event, payload) => {
+  const { taskId, taskName, mode } = payload;
+  startSession(taskId, taskName, mode);
+  return { ok: true };
+});
+
+ipcMain.handle("stop-task-session", (_event, payload) => {
+  const { taskId, elapsedSeconds, mode } = payload;
+  stopSession(taskId, elapsedSeconds, mode);
+  return { ok: true };
+});
+
+ipcMain.handle("snap-overlay", () => {
+  if (!overlayWindow || overlayMode !== "corner") return { ok: false };
+  applyCornerBounds();
+  return { ok: true };
 });
 
 ipcMain.handle("check-justification", async (_event, payload) => {
@@ -1413,6 +1548,12 @@ app.whenReady().then(() => {
   createMainWindow();
   createTray();
   startLoops();
+});
+
+app.on("before-quit", () => {
+  for (const taskId of activeSessions.keys()) {
+    stopSession(taskId, null, overlayMode);
+  }
 });
 
 app.on("window-all-closed", () => {

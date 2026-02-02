@@ -7,21 +7,27 @@ const cards = [
   {
     title: "Configuration",
     description: "Life blocks and scheduling preferences.",
-    route: "#/config",
+    route: "/?page=config",
   },
   {
     title: "Daemon Control",
     description: "Replace legacy daemons and view status.",
-    route: "#/daemons",
+    route: "/?page=daemons",
   },
   {
     title: "Run Scheduler",
     description: "Manually trigger a scheduling pass.",
-    route: "#/scheduler",
+    route: "/?page=scheduler",
   },
 ];
 
 export default function Home() {
+  const handleNavigate = (event, route) => {
+    event.preventDefault();
+    window.history.pushState({}, "", route);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   return (
     <div className="min-h-screen bg-ink text-white">
       <div className="max-w-5xl mx-auto px-8 py-12">
@@ -43,6 +49,7 @@ export default function Home() {
                 <a
                   href={card.route}
                   className={cn(buttonVariants({ variant: "secondary" }))}
+                  onClick={(event) => handleNavigate(event, card.route)}
                 >
                   Open
                 </a>

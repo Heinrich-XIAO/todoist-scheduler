@@ -3,12 +3,19 @@ import api from "../bridge.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.jsx";
 import { Button } from "./ui/button.jsx";
 import { Alert } from "./ui/alert.jsx";
+import { ArrowLeft } from "./ui/icons.jsx";
 
 export default function SchedulerControl() {
   const [status, setStatus] = useState("");
   const [lastRun, setLastRun] = useState(null);
   const [nextRun, setNextRun] = useState(null);
   const [lastError, setLastError] = useState(null);
+
+  const handleBack = (event) => {
+    event.preventDefault();
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
 
   useEffect(() => {
     api.getSchedulerStatus().then((res) => {
@@ -29,9 +36,16 @@ export default function SchedulerControl() {
     <div className="min-h-screen bg-ink text-white">
       <div className="max-w-4xl mx-auto px-8 py-12">
         <div className="mb-8">
-          <a href="#/" className="text-sm text-zinc-400">
-            Back
-          </a>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-zinc-400"
+            onClick={handleBack}
+            aria-label="Back"
+            title="Back"
+          >
+            <ArrowLeft />
+          </Button>
           <h1 className="text-3xl font-semibold mt-2">Run Scheduler</h1>
           <p className="text-zinc-400 mt-2">
             Manually trigger a scheduling pass. The app still runs automatically every 5 minutes.

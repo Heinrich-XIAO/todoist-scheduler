@@ -12,3 +12,13 @@
     font-family: "Space Grotesk", "SF Pro Text", system-ui, sans-serif;
   }
 }
+
+.overlay-drag {
+  -webkit-app-region: drag;
+}
+
+.overlay-drag button,
+.overlay-drag input,
+.overlay-drag textarea {
+  -webkit-app-region: no-drag;
+}

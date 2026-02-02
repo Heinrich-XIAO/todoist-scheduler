@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld("todoist", {
   getAutostartStatus: () => ipcRenderer.invoke("autostart-status"),
   enableAutostart: () => ipcRenderer.invoke("autostart-enable"),
   disableAutostart: () => ipcRenderer.invoke("autostart-disable"),
+  startTaskSession: (payload) => ipcRenderer.invoke("start-task-session", payload),
+  stopTaskSession: (payload) => ipcRenderer.invoke("stop-task-session", payload),
+  snapOverlay: () => ipcRenderer.invoke("snap-overlay"),
   onOverlayMode: (handler) =>
     ipcRenderer.on("overlay-mode", (_event, mode) => handler(mode)),
 });

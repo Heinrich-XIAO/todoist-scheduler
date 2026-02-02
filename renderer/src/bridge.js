@@ -15,6 +15,9 @@ const fallback = {
   getAutostartStatus: async () => ({ installed: false }),
   enableAutostart: async () => ({ installed: false }),
   disableAutostart: async () => ({ installed: false }),
+  startTaskSession: async () => ({ ok: false }),
+  stopTaskSession: async () => ({ ok: false }),
+  snapOverlay: async () => ({ ok: false }),
   onOverlayMode: () => {},
 };
 
@@ -37,6 +40,9 @@ const api = {
   getAutostartStatus: () => current().getAutostartStatus(),
   enableAutostart: () => current().enableAutostart(),
   disableAutostart: () => current().disableAutostart(),
+  startTaskSession: (payload) => current().startTaskSession(payload),
+  stopTaskSession: (payload) => current().stopTaskSession(payload),
+  snapOverlay: () => current().snapOverlay(),
   onOverlayMode: (handler) => current().onOverlayMode(handler),
 };
 

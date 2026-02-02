@@ -6,8 +6,12 @@ import DaemonConfig from "./components/DaemonConfig.jsx";
 import SchedulerControl from "./components/SchedulerControl.jsx";
 
 function getRoute() {
-  const hash = window.location.hash || "";
-  if (hash.startsWith("#/overlay")) return "overlay";
+  const url = new URL(window.location.href);
+  const page = url.searchParams.get("page") || "";
+  if (page === "overlay") return "overlay";
+  if (page === "config") return "config";
+  if (page === "daemons") return "daemons";
+  if (page === "scheduler") return "scheduler";
   return "home";
 }
 
@@ -15,9 +19,9 @@ export default function App() {
   const [route, setRoute] = useState(getRoute());
 
   useEffect(() => {
-    const onHash = () => setRoute(getRoute());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    const onNavigate = () => setRoute(getRoute());
+    window.addEventListener("popstate", onNavigate);
+    return () => window.removeEventListener("popstate", onNavigate);
   }, []);
 
   const page = useMemo(() => {

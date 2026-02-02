@@ -5,11 +5,18 @@ import { Button } from "./ui/button.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Switch } from "./ui/switch.jsx";
+import { ArrowLeft } from "./ui/icons.jsx";
 
 export default function DaemonConfig() {
   const [status, setStatus] = useState({ pids: [] });
   const [message, setMessage] = useState("");
   const [autostart, setAutostart] = useState(false);
+
+  const handleBack = (event) => {
+    event.preventDefault();
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
 
   const loadStatus = async () => {
     const res = await api.getLegacyDaemonStatus();
@@ -41,9 +48,16 @@ export default function DaemonConfig() {
     <div className="min-h-screen bg-ink text-white">
       <div className="max-w-4xl mx-auto px-8 py-12">
         <div className="mb-8">
-          <a href="#/" className="text-sm text-zinc-400">
-            Back
-          </a>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-zinc-400"
+            onClick={handleBack}
+            aria-label="Back"
+            title="Back"
+          >
+            <ArrowLeft />
+          </Button>
           <h1 className="text-3xl font-semibold mt-2">Daemon Control</h1>
           <p className="text-zinc-400 mt-2">
             This app replaces the legacy Python LaunchAgent and disables it on startup.
