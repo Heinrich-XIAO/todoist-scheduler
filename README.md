@@ -56,7 +56,7 @@ Environment
 
 - TODOIST_KEY (required)
 - OPENROUTER_KEY (optional)
-- OPENROUTER_PROXY (optional; for you this should be https://ai.hackclub.com/proxy/)
+- OPENROUTER_PROXY (optional; for you this should be https://ai.hackclub.com/proxy/v1)
 
 Future configuration
 

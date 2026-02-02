@@ -42,7 +42,7 @@ Environment variables
 
 - `TODOIST_KEY` (required)
 - `OPENROUTER_KEY` (optional)
-- `OPENROUTER_PROXY` (optional; for this setup use `https://ai.hackclub.com/proxy/`)
+- `OPENROUTER_PROXY` (optional; for this setup use `https://ai.hackclub.com/proxy/v1`)
 
 Runtime data + backwards compatibility
 

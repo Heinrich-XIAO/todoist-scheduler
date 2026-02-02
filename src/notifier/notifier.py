@@ -275,7 +275,7 @@ def main() -> None:
 
         class FakeTask:
             def __init__(self, content: str):
-                self.id = f"test-task-{int(time.time())}"
+                self.id = "test-task-123"
                 self.content = content
                 self.priority = 3
                 self.description = "This is a test task with full-screen overlay. Click START to begin! 0.5m"
