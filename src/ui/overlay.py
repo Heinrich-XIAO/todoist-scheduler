@@ -656,16 +656,6 @@ class TaskOverlayWindow:
             wraplength=sw - 100,
         ).pack(pady=(0, 20))
 
-        if self.description:
-            tk.Label(
-                content,
-                text=self.description,
-                font=get_system_font(self.root, 24),
-                fg="#aaaaaa",
-                bg="#1a1a1a",
-                wraplength=sw - 200,
-            ).pack(pady=(0, 40))
-
         if not self.timer_started:
             tk.Label(
                 content,
