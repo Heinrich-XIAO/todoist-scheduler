@@ -34,8 +34,8 @@ LaunchAgent
 Logs:
 
 ```bash
-tail -f ~/Library/Logs/todoist-scheduler/notifier.log
-tail -f ~/Library/Logs/todoist-scheduler/notifier.error.log
+tail -f data/notifier.log
+tail -f data/notifier.error.log
 ```
 
 Environment variables

@@ -21,6 +21,17 @@ from src.integrations.openrouter import estimate_minutes
 
 def play_spotify() -> bool:
     try:
+        stop_script = (
+            "try\n"
+            'tell application "Music" to pause\n'
+            "end try\n"
+            "try\n"
+            'tell application "Spotify" to pause\n'
+            "end try"
+        )
+        subprocess.run(
+            ["osascript", "-e", stop_script], capture_output=True, text=True, timeout=5
+        )
         play_script = 'tell application "Spotify" to play'
         result = subprocess.run(
             ["osascript", "-e", play_script],
@@ -657,14 +668,6 @@ class TaskOverlayWindow:
         ).pack(pady=(0, 20))
 
         if not self.timer_started:
-            tk.Label(
-                content,
-                text="Ready to focus?",
-                font=get_system_font(self.root, 32),
-                fg="#00ff00",
-                bg="#1a1a1a",
-            ).pack(pady=(0, 30))
-
             create_styled_button(
                 content,
                 text="START TASK",
