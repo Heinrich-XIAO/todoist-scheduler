@@ -51,6 +51,10 @@ class TaskScheduler:
             if new_priority is None:
                 continue
             self.api.update_task(task.id, priority=new_priority)
+            try:
+                task.priority = new_priority
+            except Exception:
+                pass
 
     def is_task_completed(self, task) -> bool:
         if hasattr(task, "is_completed") and task.is_completed:
@@ -271,6 +275,7 @@ class TaskScheduler:
 
     def schedule_non_recurring_tasks(self) -> None:
         bad_tasks = self.get_bad_tasks()
+        bad_tasks.sort(key=lambda task: getattr(task, "priority", 1), reverse=True)
 
         now = dt.datetime.now()
         now_rounded = now.replace(minute=0, second=0, microsecond=0)
