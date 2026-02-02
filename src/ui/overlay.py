@@ -17,6 +17,11 @@ from todoist_api_python.api import TodoistAPI
 from src.analytics import record_task_completion
 from src.overlay_state import load_state, save_state
 from src.integrations.openrouter import estimate_minutes
+from src.scheduler.constants import (
+    WEEKDAY_START_HOUR,
+    WEEKDAY_START_MINUTE,
+    WEEKEND_START_HOUR,
+)
 
 
 def play_spotify() -> bool:
@@ -220,6 +225,86 @@ class TaskOverlayWindow:
             # Need AI justification for additional snoozes
             self._show_justification_dialog()
 
+    def on_postpone(self):
+        """Handle postpone button press with reason."""
+        if not self.root:
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Postpone Task")
+        dialog.geometry("520x320")
+        dialog.configure(bg="#1a1a1a")
+        dialog.attributes("-topmost", True)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (520 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (320 // 2)
+        dialog.geometry(f"520x320+{x}+{y}")
+
+        tk.Label(
+            dialog,
+            text="Why are you postponing?",
+            font=get_system_font(dialog, 18, "bold"),
+            fg="white",
+            bg="#1a1a1a",
+        ).pack(pady=(24, 10))
+
+        tk.Label(
+            dialog,
+            text="If it's sleep-related, I'll pause new tasks.",
+            font=get_system_font(dialog, 12),
+            fg="#bbbbbb",
+            bg="#1a1a1a",
+        ).pack(pady=(0, 10))
+
+        reason_var = tk.StringVar()
+        entry = tk.Entry(
+            dialog,
+            textvariable=reason_var,
+            font=get_system_font(dialog, 12),
+            width=42,
+            bg="#333333",
+            fg="white",
+            insertbackground="white",
+        )
+        entry.pack(pady=(0, 20), padx=20)
+        entry.focus()
+
+        def submit():
+            reason = reason_var.get().strip()
+            if not reason:
+                return
+            dialog.destroy()
+            self._handle_postpone(reason)
+
+        def cancel():
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog, bg="#1a1a1a")
+        btn_frame.pack(pady=(10, 0))
+
+        create_styled_button(
+            btn_frame,
+            text="POSTPONE",
+            command=submit,
+            bg_color="#0066cc",
+            font=get_system_font(dialog, 14, "bold"),
+            padx=30,
+            pady=10,
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        create_styled_button(
+            btn_frame,
+            text="CANCEL",
+            command=cancel,
+            bg_color="#666666",
+            font=get_system_font(dialog, 14, "bold"),
+            padx=30,
+            pady=10,
+        ).pack(side=tk.LEFT)
+
     def _do_snooze(self):
         """Execute the snooze: close overlay and schedule reappear in 5 minutes."""
         self.snooze_count += 1
@@ -244,6 +329,122 @@ class TaskOverlayWindow:
         # Close the overlay without recording completion
         if self.root:
             self.root.destroy()
+
+    def _handle_postpone(self, reason: str) -> None:
+        is_sleep = self._is_sleep_reason(reason)
+        now = time.time()
+        sleep_until = None
+        if is_sleep:
+            sleep_until = self._next_start_timestamp()
+
+        postpone_minutes = 30
+        postpone_until = now + (postpone_minutes * 60)
+
+        state = load_state()
+        state.setdefault("active_tasks", {})
+        state["active_tasks"][self.task_id] = {
+            "task_name": self.task_name,
+            "description": self.description,
+            "elapsed_seconds": self.elapsed_seconds,
+            "mode": self.mode,
+            "last_updated": now,
+            "estimated_duration": self.estimated_duration,
+            "snooze_count": self.snooze_count,
+            "snooze_until": sleep_until or postpone_until,
+            "snoozed": True,
+        }
+        if is_sleep and sleep_until is not None:
+            state["sleep_until"] = sleep_until
+        save_state(state)
+
+        Path(self.output_file).write_text(
+            json.dumps(
+                {
+                    "task_id": self.task_id,
+                    "elapsed_seconds": self.elapsed_seconds,
+                    "completed": False,
+                    "postponed": True,
+                    "sleep": bool(is_sleep),
+                }
+            )
+        )
+
+        if self.root:
+            self.root.destroy()
+
+    def _is_sleep_reason(self, reason: str) -> bool:
+        api_key = os.getenv("OPENROUTER_KEY")
+        if not api_key:
+            return self._is_sleep_reason_fallback(reason)
+
+        proxy_url = os.getenv(
+            "OPENROUTER_PROXY", "https://openrouter.ai/api/v1"
+        ).rstrip("/")
+
+        prompt = (
+            "Classify if the user's reason is sleep-related.\n"
+            "Reply with ONLY 'YES' or 'NO'.\n\n"
+            f"Reason: {reason}\n"
+        )
+
+        try:
+            response = requests.post(
+                f"{proxy_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://todoist-scheduler.local",
+                    "X-Title": "Todoist Scheduler",
+                },
+                json={
+                    "model": "moonshotai/kimi-k2-5",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "Reply only YES or NO.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "max_tokens": 5,
+                    "temperature": 0.1,
+                },
+                timeout=8,
+            )
+            response.raise_for_status()
+            content = response.json()["choices"][0]["message"]["content"].upper()
+            return "YES" in content and "NO" not in content
+        except Exception:
+            return self._is_sleep_reason_fallback(reason)
+
+    def _is_sleep_reason_fallback(self, reason: str) -> bool:
+        text = reason.lower()
+        keywords = [
+            "sleep",
+            "nap",
+            "tired",
+            "exhausted",
+            "bed",
+            "bedtime",
+            "rest",
+            "asleep",
+            "sleeping",
+        ]
+        return any(word in text for word in keywords)
+
+    def _next_start_timestamp(self) -> float:
+        now = dt.datetime.now()
+        if now.weekday() >= 5:
+            start_hour = WEEKEND_START_HOUR
+            start_minute = 0
+        else:
+            start_hour = WEEKDAY_START_HOUR
+            start_minute = WEEKDAY_START_MINUTE
+        candidate = now.replace(
+            hour=start_hour, minute=start_minute, second=0, microsecond=0
+        )
+        if candidate <= now:
+            candidate += dt.timedelta(days=1)
+        return candidate.timestamp()
 
     def _show_justification_dialog(self):
         """Show a dialog asking user to justify why they need more time."""
@@ -691,6 +892,17 @@ class TaskOverlayWindow:
                 pady=15,
             ).pack(pady=(0, 15))
 
+            create_styled_button(
+                content,
+                text="POSTPONE",
+                command=self.on_postpone,
+                bg_color="#0066cc",
+                fg_color="white",
+                font=get_system_font(self.root, 22, "bold"),
+                padx=36,
+                pady=12,
+            ).pack(pady=(0, 15))
+
             tk.Label(
                 content,
                 text=f"Estimated: {int(self.estimated_duration)} minutes",
@@ -753,6 +965,17 @@ class TaskOverlayWindow:
                 font=get_system_font(self.root, 24, "bold"),
                 padx=40,
                 pady=15,
+            ).pack(pady=(0, 15))
+
+            create_styled_button(
+                btn_frame2,
+                text="POSTPONE",
+                command=self.on_postpone,
+                bg_color="#0066cc",
+                fg_color="white",
+                font=get_system_font(self.root, 20, "bold"),
+                padx=40,
+                pady=12,
             ).pack(pady=(0, 15))
 
             create_styled_button(

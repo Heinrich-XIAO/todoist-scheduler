@@ -9,6 +9,7 @@ from src.scheduler.constants import (
     INTERVAL_MINUTES,
     SLEEP_TIME,
     WEEKDAY_START_HOUR,
+    WEEKDAY_START_MINUTE,
     WEEKEND_START_HOUR,
 )
 from src.integrations.openrouter import estimate_priority
@@ -92,8 +93,12 @@ class TaskScheduler:
         if when in self.get_life_blocks_for_date(when.date()):
             return True
 
-        start_hour = WEEKEND_START_HOUR if when.weekday() >= 5 else WEEKDAY_START_HOUR
-        if when.time() >= SLEEP_TIME or when.hour < start_hour:
+        is_weekend = when.weekday() >= 5
+        if is_weekend:
+            start_time = dt.time(WEEKEND_START_HOUR, 0)
+        else:
+            start_time = dt.time(WEEKDAY_START_HOUR, WEEKDAY_START_MINUTE)
+        if when.time() >= SLEEP_TIME or when.time() < start_time:
             return True
 
         return False
@@ -207,7 +212,11 @@ class TaskScheduler:
             start_hour = (
                 WEEKEND_START_HOUR if check_time.weekday() >= 5 else WEEKDAY_START_HOUR
             )
-            if check_time.time() >= SLEEP_TIME or check_time.hour < start_hour:
+            if check_time.weekday() >= 5:
+                start_time = dt.time(WEEKEND_START_HOUR, 0)
+            else:
+                start_time = dt.time(WEEKDAY_START_HOUR, WEEKDAY_START_MINUTE)
+            if check_time.time() >= SLEEP_TIME or check_time.time() < start_time:
                 return False
             if check_time in self.recurring_slots:
                 return False

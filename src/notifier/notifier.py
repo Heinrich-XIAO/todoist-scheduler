@@ -84,6 +84,16 @@ class TaskNotifier:
         now = dt.datetime.now()
         current_time = now.time()
 
+        state = load_state()
+        sleep_until = state.get("sleep_until")
+        if sleep_until:
+            if time.time() < float(sleep_until):
+                return
+            state.pop("sleep_until", None)
+            from src.overlay_state import save_state
+
+            save_state(state)
+
         if now.date() != self.today:
             self.last_notification_time.clear()
             self.today = now.date()
@@ -98,6 +108,12 @@ class TaskNotifier:
                 continue
             if not task.due or not task.due.date:
                 continue
+
+            task_state = state.get("active_tasks", {}).get(task.id, {})
+            if task_state.get("snoozed"):
+                snooze_until = task_state.get("snooze_until", 0)
+                if time.time() < float(snooze_until or 0):
+                    continue
 
             due_dt = self.to_datetime(task.due.date)
             if not due_dt or due_dt.date() != self.today:
@@ -168,6 +184,15 @@ class TaskNotifier:
         state = load_state()
         active_tasks = state.get("active_tasks", {})
         now = time.time()
+
+        sleep_until = state.get("sleep_until")
+        if sleep_until and now < float(sleep_until):
+            return
+        if sleep_until and now >= float(sleep_until):
+            state.pop("sleep_until", None)
+            from src.overlay_state import save_state
+
+            save_state(state)
 
         for task_id, task_data in list(active_tasks.items()):
             if not task_data.get("snoozed"):
