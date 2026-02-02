@@ -6,8 +6,8 @@ from typing import Iterable
 
 
 def project_root() -> Path:
-    # .../src/todoist_scheduler/core/paths.py -> .../
-    return Path(__file__).resolve().parents[3]
+    # .../src/core/paths.py -> .../
+    return Path(__file__).resolve().parents[2]
 
 
 def data_dir() -> Path:

@@ -5,7 +5,7 @@ from typing import Dict
 
 import requests
 
-from todoist_scheduler.notifier.cache import save_cache, task_hash
+from src.notifier.cache import save_cache, task_hash
 
 
 COMPUTER_KEYWORDS = [

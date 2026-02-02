@@ -15,8 +15,8 @@ dependencies = [
 ]
 
 [project.scripts]
-todoist-scheduler = "todoist_scheduler.cli_scheduler:main"
-task-notifier = "todoist_scheduler.cli_notifier:main"
+todoist-scheduler = "src.cli_scheduler:main"
+task-notifier = "src.cli_notifier:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/todoist_scheduler"]
+packages = ["src"]

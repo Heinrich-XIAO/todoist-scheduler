@@ -8,13 +8,13 @@ from typing import Dict, Optional
 
 from todoist_api_python.api import TodoistAPI
 
-from todoist_scheduler.core.env import get_env_var, load_local_env
-from todoist_scheduler.core.paths import migrate_legacy_files, project_root
-from todoist_scheduler.notifier.cache import load_cache
-from todoist_scheduler.notifier.classifier import is_computer_task
-from todoist_scheduler.notifier.notifications import send_notification
-from todoist_scheduler.overlay_state import load_state
-from todoist_scheduler.ui.overlay import (
+from src.core.env import get_env_var, load_local_env
+from src.core.paths import migrate_legacy_files, project_root
+from src.notifier.cache import load_cache
+from src.notifier.classifier import is_computer_task
+from src.notifier.notifications import send_notification
+from src.overlay_state import load_state
+from src.ui.overlay import (
     list_active_tasks,
     resume_task_overlay,
     show_task_overlay,
@@ -182,7 +182,7 @@ class TaskNotifier:
             # Clear snooze flag but keep other state
             task_data["snoozed"] = False
             state["active_tasks"][task_id] = task_data
-            from todoist_scheduler.overlay_state import save_state
+            from src.overlay_state import save_state
 
             save_state(state)
 
@@ -275,7 +275,7 @@ def main() -> None:
 
         class FakeTask:
             def __init__(self, content: str):
-                self.id = "test-task-123"
+                self.id = f"test-task-{int(time.time())}"
                 self.content = content
                 self.priority = 3
                 self.description = "This is a test task with full-screen overlay. Click START to begin! 0.5m"

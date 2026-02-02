@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Dict
 
-from todoist_scheduler.core.paths import (
+from src.core.paths import (
     data_dir,
     ensure_data_layout,
     legacy_or_data_path,

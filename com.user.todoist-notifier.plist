@@ -9,7 +9,7 @@
     <array>
         <string>/Users/heinrich/Documents/todoist-scheduler/.venv/bin/python</string>
         <string>-m</string>
-        <string>todoist_scheduler.cli_notifier</string>
+        <string>src.cli_notifier</string>
     </array>
     
     <key>WorkingDirectory</key>

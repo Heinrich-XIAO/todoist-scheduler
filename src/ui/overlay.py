@@ -13,9 +13,9 @@ from typing import Any, Dict, Optional
 import requests
 from todoist_api_python.api import TodoistAPI
 
-from todoist_scheduler.analytics import record_task_completion
-from todoist_scheduler.overlay_state import load_state, save_state
-from todoist_scheduler.integrations.openrouter import estimate_minutes
+from src.analytics import record_task_completion
+from src.overlay_state import load_state, save_state
+from src.integrations.openrouter import estimate_minutes
 
 
 def play_spotify() -> bool:
@@ -1075,7 +1075,7 @@ def show_task_overlay(
     cmd = [
         sys.executable,
         "-m",
-        "todoist_scheduler.ui.overlay",
+        "src.ui.overlay",
         "--task-name",
         task_name,
         "--task-id",

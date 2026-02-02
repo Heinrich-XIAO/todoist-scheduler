@@ -4,7 +4,7 @@ This repo is intentionally small and env-var driven.
 
 Layout
 
-- Python source: `src/todoist_scheduler/`
+- Python source: `src/`
 - Scripts: `scripts/`
 - LaunchAgent plist: `com.user.todoist-notifier.plist`
 - Runtime files: `data/` (logs/state/cache/analytics)

@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from typing import Optional, Tuple
 
-from todoist_scheduler.integrations.openrouter import estimate_minutes
-from todoist_scheduler.scheduler.constants import (
+from src.integrations.openrouter import estimate_minutes
+from src.scheduler.constants import (
     DEFAULT_DURATION,
     INTERVAL_MINUTES,
     MIN_DURATION,

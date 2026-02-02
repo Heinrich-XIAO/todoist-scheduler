@@ -5,13 +5,13 @@ from typing import Optional, Tuple, Union
 
 from todoist_api_python.api import TodoistAPI
 
-from todoist_scheduler.scheduler.constants import (
+from src.scheduler.constants import (
     INTERVAL_MINUTES,
     SLEEP_TIME,
     WEEKDAY_START_HOUR,
     WEEKEND_START_HOUR,
 )
-from todoist_scheduler.scheduler.duration import TaskDurationEstimator
+from src.scheduler.duration import TaskDurationEstimator
 
 
 class TaskScheduler:
