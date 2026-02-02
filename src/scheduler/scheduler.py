@@ -65,6 +65,10 @@ class TaskScheduler:
             return True
         return False
 
+    def should_skip_reschedule(self, task) -> bool:
+        labels = getattr(task, "labels", []) or []
+        return "#dontchangetime" in labels
+
     def to_datetime(self, d: Union[dt.date, dt.datetime]) -> dt.datetime:
         if isinstance(d, dt.datetime):
             return d
@@ -76,6 +80,11 @@ class TaskScheduler:
         if isinstance(due_date, dt.datetime):
             return due_date.date()
         return due_date
+
+    def is_date_only_task(self, task) -> bool:
+        if not task.due or not task.due.date:
+            return False
+        return getattr(task.due, "datetime", None) is None
 
     def is_time_blocked(self, when: dt.datetime) -> bool:
         if when in self.blocked_slots:
@@ -106,6 +115,8 @@ class TaskScheduler:
 
         for task in self.tasks:
             if self.is_task_completed(task):
+                continue
+            if self.should_skip_reschedule(task):
                 continue
 
             if not (task.due and task.due.date):
@@ -164,6 +175,18 @@ class TaskScheduler:
             time += dt.timedelta(minutes=INTERVAL_MINUTES)
         raise RuntimeError("Could not find available time slot")
 
+    def find_available_slot_for_date(
+        self, start_time: dt.datetime, num_blocks: int, target_date: dt.date
+    ) -> Optional[dt.datetime]:
+        time = start_time
+        for _ in range(10000):
+            if time.date() != target_date:
+                return None
+            if self.is_slot_available(time, num_blocks):
+                return time
+            time += dt.timedelta(minutes=INTERVAL_MINUTES)
+        return None
+
     def block_time_slots(self, start_time: dt.datetime, num_blocks: int) -> None:
         for j in range(num_blocks):
             block_time = start_time + dt.timedelta(minutes=INTERVAL_MINUTES * j)
@@ -195,6 +218,8 @@ class TaskScheduler:
         bad_tasks = []
         for task in self.tasks:
             if self.is_task_completed(task):
+                continue
+            if self.should_skip_reschedule(task):
                 continue
 
             if task.due is None:
@@ -293,10 +318,19 @@ class TaskScheduler:
         bad_tasks.sort(key=lambda task: getattr(task, "priority", 1), reverse=True)
 
         now = dt.datetime.now()
-        now_rounded = now.replace(minute=0, second=0, microsecond=0)
-        now_rounded += dt.timedelta(
+        min_start = now + dt.timedelta(hours=1)
+        min_start_rounded = min_start.replace(minute=0, second=0, microsecond=0)
+        min_start_rounded += dt.timedelta(
             minutes=INTERVAL_MINUTES
-            * ((now.minute + INTERVAL_MINUTES - 1) // INTERVAL_MINUTES)
+            * ((min_start.minute + INTERVAL_MINUTES - 1) // INTERVAL_MINUTES)
+        )
+        now_rounded = max(
+            min_start_rounded,
+            now.replace(minute=0, second=0, microsecond=0)
+            + dt.timedelta(
+                minutes=INTERVAL_MINUTES
+                * ((now.minute + INTERVAL_MINUTES - 1) // INTERVAL_MINUTES)
+            ),
         )
 
         gaps = self.find_gaps_in_schedule(now_rounded)
@@ -308,9 +342,21 @@ class TaskScheduler:
             )
             num_blocks = max(1, (duration + INTERVAL_MINUTES - 1) // INTERVAL_MINUTES)
 
-            time_slot = self.find_gap_for_task(gaps, num_blocks)
-            if time_slot is None:
-                time_slot = self.find_available_slot(now_rounded, num_blocks)
+            if self.is_date_only_task(task):
+                target_date = self.get_date(task.due.date)
+                if target_date != self.today:
+                    continue
+                time_slot = self.find_gap_for_task(gaps, num_blocks)
+                if time_slot is None:
+                    time_slot = self.find_available_slot_for_date(
+                        now_rounded, num_blocks, target_date
+                    )
+                if time_slot is None:
+                    continue
+            else:
+                time_slot = self.find_gap_for_task(gaps, num_blocks)
+                if time_slot is None:
+                    time_slot = self.find_available_slot(now_rounded, num_blocks)
 
             # Unblock old slot if this task was previously scheduled
             if task.due and task.due.date:
