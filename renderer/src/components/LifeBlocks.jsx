@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Trash } from "./ui/icons.jsx";
+import { ArrowLeft } from "./ui/icons.jsx";
 
 const DAYS = [
   { key: "mon", label: "M" },
@@ -48,6 +49,12 @@ export default function LifeBlocks() {
   });
   const [status, setStatus] = useState("");
   const [available, setAvailable] = useState(false);
+
+  const handleBack = (event) => {
+    event.preventDefault();
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
 
   useEffect(() => {
     setAvailable(api.isAvailable());
@@ -126,6 +133,16 @@ export default function LifeBlocks() {
       <div className="max-w-5xl mx-auto px-8 py-10">
         <div className="flex items-center justify-between mb-8">
           <div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-zinc-400"
+              onClick={handleBack}
+              aria-label="Back"
+              title="Back"
+            >
+              <ArrowLeft />
+            </Button>
             <p className="text-sm uppercase tracking-[0.3em] text-amber">Life Blocks</p>
             <h1 className="text-3xl font-semibold">Protect your time</h1>
           </div>

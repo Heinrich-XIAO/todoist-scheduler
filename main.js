@@ -571,6 +571,10 @@ function timeStatsPath() {
   return path.join(DATA_DIR, "task_time.json");
 }
 
+function usagePath() {
+  return path.join(DATA_DIR, "usage.json");
+}
+
 function loadOverlayState() {
   return readJson(overlayStatePath(), { active_tasks: {}, completed_tasks: [] });
 }
@@ -603,11 +607,102 @@ function saveTimeStats(stats) {
   writeJson(timeStatsPath(), stats);
 }
 
+function loadUsage() {
+  return readJson(usagePath(), { version: 1, events: [] });
+}
+
+function saveUsage(usage) {
+  writeJson(usagePath(), usage);
+}
+
+function logUsage(type, data = {}) {
+  const usage = loadUsage();
+  usage.events.push({
+    type,
+    at: new Date().toISOString(),
+    ...data,
+  });
+  if (usage.events.length > 2000) {
+    usage.events = usage.events.slice(-2000);
+  }
+  saveUsage(usage);
+}
+
 function dateKeyFor(ms) {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate()
   ).padStart(2, "0")}`;
+}
+
+function parseDateKey(key) {
+  const [year, month, day] = String(key)
+    .split("-")
+    .map((v) => Number(v));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  return new Date(year, month - 1, day).getTime();
+}
+
+function startOfDay(ms) {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function sumDaily(stats, sinceMs) {
+  const since = startOfDay(sinceMs);
+  let total = 0;
+  for (const [key, day] of Object.entries(stats.daily || {})) {
+    const dayMs = parseDateKey(key);
+    if (!Number.isFinite(dayMs)) continue;
+    if (dayMs < since) continue;
+    total += Number(day.total_seconds || 0);
+  }
+  return total;
+}
+
+function countEvents(events, sinceMs) {
+  const counts = {};
+  for (const event of events || []) {
+    const ts = Date.parse(event.at);
+    if (sinceMs && Number.isFinite(ts) && ts < sinceMs) continue;
+    counts[event.type] = (counts[event.type] || 0) + 1;
+  }
+  return counts;
+}
+
+function topTasks(stats, limit = 5) {
+  const entries = Object.entries(stats.tasks || {}).map(([taskId, data]) => ({
+    task_id: taskId,
+    task_name: data.task_name || "",
+    total_seconds: Number(data.total_seconds || 0),
+  }));
+  entries.sort((a, b) => b.total_seconds - a.total_seconds);
+  return entries.slice(0, limit);
+}
+
+function buildUsageDashboard() {
+  const stats = loadTimeStats();
+  const usage = loadUsage();
+  const now = Date.now();
+  const seven = now - 7 * 24 * 60 * 60 * 1000;
+  const thirty = now - 30 * 24 * 60 * 60 * 1000;
+  return {
+    time: {
+      today_seconds: sumDaily(stats, now),
+      last7_seconds: sumDaily(stats, seven),
+      last30_seconds: sumDaily(stats, thirty),
+    },
+    counts: {
+      all_time: countEvents(usage.events),
+      last7: countEvents(usage.events, seven),
+      last30: countEvents(usage.events, thirty),
+    },
+    top_tasks: topTasks(stats, 5),
+    recent_events: (usage.events || []).slice(-50).reverse(),
+  };
 }
 
 function addDaily(stats, dateKey, taskId, seconds) {
@@ -653,6 +748,12 @@ function recordSession(taskId, startMs, endMs, mode, taskName) {
   });
 
   saveTimeStats(stats);
+  logUsage("session_stop", {
+    task_id: taskId,
+    task_name: taskName || "",
+    mode,
+    seconds: totalSeconds,
+  });
 }
 
 function startSession(taskId, taskName, mode) {
@@ -663,6 +764,7 @@ function startSession(taskId, taskName, mode) {
     taskName: taskName || "",
     mode: mode || "full",
   });
+  logUsage("session_start", { task_id: taskId, task_name: taskName || "", mode: mode || "full" });
 }
 
 function stopSession(taskId, fallbackSeconds, modeOverride) {
@@ -1262,6 +1364,11 @@ async function notifyTask(task) {
   }).show();
   notificationCount += 1;
   lastNotificationAt = new Date().toISOString();
+  logUsage("notification", {
+    task_id: task.id,
+    task_name: task.content || "",
+    priority: task.priority,
+  });
 }
 
 async function checkAndNotify() {
@@ -1314,6 +1421,7 @@ async function checkAndNotify() {
     if (isComputer && !activeOverlays.has(task.id)) {
       if (overlayWindow) return;
       activeOverlays.add(task.id);
+      logUsage("overlay_show", { task_id: task.id, task_name: task.content || "" });
       overlayTask = {
         id: task.id,
         content: task.content,
@@ -1367,9 +1475,11 @@ function startLoops() {
       await scheduler.run();
       schedulerStatus.lastRun = new Date().toISOString();
       schedulerStatus.lastError = null;
+      logUsage("scheduler_run_auto", { ok: true });
     } catch (err) {
       schedulerStatus.lastError = String(err);
       log(`Scheduler error: ${err}`);
+      logUsage("scheduler_run_auto", { ok: false, error: String(err) });
     } finally {
       schedulerStatus.nextRun = new Date(
         Date.now() + SCHEDULER_INTERVAL_MS
@@ -1389,6 +1499,10 @@ function startLoops() {
 ipcMain.handle("get-life-blocks", () => loadLifeBlocks());
 ipcMain.handle("save-life-blocks", (_event, data) => {
   saveLifeBlocks(data);
+  logUsage("life_blocks_save", {
+    weekly: (data.weekly || []).length,
+    one_off: (data.one_off || []).length,
+  });
   return { ok: true };
 });
 
@@ -1398,11 +1512,13 @@ ipcMain.handle("get-overlay-task", () => {
 
 ipcMain.handle("set-overlay-mode", (_event, mode) => {
   setOverlayMode(mode);
+  logUsage("overlay_mode", { mode });
   return { ok: true };
 });
 
 ipcMain.handle("complete-task", async (_event, taskId) => {
   stopSession(taskId, null, overlayMode);
+  logUsage("task_complete", { task_id: taskId, mode: overlayMode });
   try {
     await todoistFetch(`/tasks/${taskId}/close`, { method: "POST" });
   } catch (err) {
@@ -1420,6 +1536,12 @@ ipcMain.handle("complete-task", async (_event, taskId) => {
 ipcMain.handle("snooze-task", (_event, payload) => {
   const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes } = payload;
   stopSession(taskId, elapsedSeconds, mode);
+  logUsage("task_snooze", {
+    task_id: taskId,
+    task_name: taskName || "",
+    mode,
+    estimated_minutes: estimatedMinutes || 0,
+  });
   const state = loadOverlayState();
   state.active_tasks = state.active_tasks || {};
   const prev = state.active_tasks[taskId] || {};
@@ -1445,6 +1567,12 @@ ipcMain.handle("snooze-task", (_event, payload) => {
 ipcMain.handle("postpone-task", async (_event, payload) => {
   const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes, reason } = payload;
   stopSession(taskId, elapsedSeconds, mode);
+  logUsage("task_postpone", {
+    task_id: taskId,
+    task_name: taskName || "",
+    mode,
+    estimated_minutes: estimatedMinutes || 0,
+  });
   const isSleep = await isSleepReason(reason);
   const state = loadOverlayState();
   state.active_tasks = state.active_tasks || {};
@@ -1507,13 +1635,17 @@ ipcMain.handle("run-scheduler-now", async () => {
     }
     await schedulerInstance.run();
     schedulerStatus.lastRun = new Date().toISOString();
+    logUsage("scheduler_run_manual", { ok: true });
     return { ok: true };
   } catch (err) {
     log(`Scheduler manual run failed: ${err}`);
     schedulerStatus.lastError = String(err);
+    logUsage("scheduler_run_manual", { ok: false, error: String(err) });
     return { ok: false };
   }
 });
+
+ipcMain.handle("get-usage-dashboard", () => buildUsageDashboard());
 
 ipcMain.handle("get-scheduler-status", () => {
   return {
@@ -1529,16 +1661,19 @@ ipcMain.handle("legacy-daemon-status", () => {
 
 ipcMain.handle("stop-legacy-daemon", () => {
   stopLegacyDaemon();
+  logUsage("legacy_daemon_stop", { ok: true });
   return { ok: true, pids: findLegacyDaemonPids() };
 });
 
 ipcMain.handle("autostart-status", () => autostartStatus());
 ipcMain.handle("autostart-enable", () => {
   enableAutostart();
+  logUsage("autostart_enable", { ok: true });
   return autostartStatus();
 });
 ipcMain.handle("autostart-disable", () => {
   disableAutostart();
+  logUsage("autostart_disable", { ok: true });
   return autostartStatus();
 });
 

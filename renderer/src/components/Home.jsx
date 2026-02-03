@@ -10,6 +10,11 @@ const cards = [
     route: "/?page=config",
   },
   {
+    title: "My Data",
+    description: "Usage stats and time tracked locally.",
+    route: "/?page=data",
+  },
+  {
     title: "Daemon Control",
     description: "Replace legacy daemons and view status.",
     route: "/?page=daemons",

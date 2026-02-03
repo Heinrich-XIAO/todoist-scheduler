@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("todoist", {
   startTaskSession: (payload) => ipcRenderer.invoke("start-task-session", payload),
   stopTaskSession: (payload) => ipcRenderer.invoke("stop-task-session", payload),
   snapOverlay: () => ipcRenderer.invoke("snap-overlay"),
+  getUsageDashboard: () => ipcRenderer.invoke("get-usage-dashboard"),
   onOverlayMode: (handler) =>
     ipcRenderer.on("overlay-mode", (_event, mode) => handler(mode)),
 });

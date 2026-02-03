@@ -4,6 +4,7 @@ import Overlay from "./components/Overlay.jsx";
 import Home from "./components/Home.jsx";
 import DaemonConfig from "./components/DaemonConfig.jsx";
 import SchedulerControl from "./components/SchedulerControl.jsx";
+import UsageData from "./components/UsageData.jsx";
 
 function getRoute() {
   const url = new URL(window.location.href);
@@ -12,6 +13,7 @@ function getRoute() {
   if (page === "config") return "config";
   if (page === "daemons") return "daemons";
   if (page === "scheduler") return "scheduler";
+  if (page === "data") return "data";
   return "home";
 }
 
@@ -29,6 +31,7 @@ export default function App() {
     if (route === "config") return <LifeBlocks />;
     if (route === "daemons") return <DaemonConfig />;
     if (route === "scheduler") return <SchedulerControl />;
+    if (route === "data") return <UsageData />;
     return <Home />;
   }, [route]);
 
