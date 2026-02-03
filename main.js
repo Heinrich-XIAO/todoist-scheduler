@@ -1067,6 +1067,21 @@ async function estimatePriority(task, description) {
   return null;
 }
 
+async function isDailyActivity(task, description) {
+  if (!OPENROUTER_KEY) return false;
+  const prompt =
+    `Task: ${task}\n` +
+    `Description: ${description}\n\n` +
+    "Is this a routine daily activity that should be done every day (like exercise, reading, meditation, etc.)? Reply with ONLY YES or NO.";
+  const content = await openrouterChat(
+    "You determine if tasks are daily activities. Reply only YES or NO.",
+    prompt,
+    6
+  );
+  if (!content) return false;
+  return content.toUpperCase().includes("YES") && !content.toUpperCase().includes("NO");
+}
+
 async function openrouterChat(system, prompt, maxTokens) {
   try {
     const res = await fetch(`${OPENROUTER_PROXY.replace(/\/$/, "")}/chat/completions`, {
@@ -1753,14 +1768,20 @@ async function checkAndNotify() {
 
     const dueDate = getTaskDate(task);
     if (dueDate && now.getTime() - dueDate.getTime() > 5 * 60 * 60_000) {
-      try {
-        await todoistFetch(`/tasks/${task.id}/close`, { method: "POST" });
-        logUsage("task_auto_complete_overdue", {
-          task_id: task.id,
-          task_name: task.content || "",
-        });
-      } catch (err) {
-        log(`Auto-complete overdue task failed: ${err}`);
+      const isDaily = await isDailyActivity(task.content || "", task.description || "");
+      if (isDaily) {
+        try {
+          await todoistFetch(`/tasks/${task.id}/close`, { method: "POST" });
+          logUsage("task_auto_complete_overdue", {
+            task_id: task.id,
+            task_name: task.content || "",
+            daily_activity: true,
+          });
+        } catch (err) {
+          log(`Auto-complete overdue task failed: ${err}`);
+        }
+      } else {
+        log(`Skipping auto-complete for non-daily activity: ${task.content}`);
       }
       continue;
     }
@@ -2104,8 +2125,7 @@ ipcMain.handle("get-task-queue", async () => {
           duration_minutes: duration,
         };
       })
-      .filter((task) => Boolean(task.due))
-      .filter((task) => Date.now() - task.due.getTime() <= 5 * 60 * 60_000);
+      .filter((task) => Boolean(task.due));
     const ordered = await orderQueueTasks(queueCandidates);
     const queue = ordered.map((task) => ({
       ...task,

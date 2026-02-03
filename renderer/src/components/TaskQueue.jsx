@@ -257,7 +257,6 @@ export default function TaskQueue() {
                       )}
                     </div>
                      <div className="flex items-center gap-2 shrink-0">
-                       {task.id === primaryTaskId && <Badge>Do this next</Badge>}
                        {(() => {
                          const timeDisplay = formatTimeDisplay(task.due, true, false);
                          return (
@@ -328,7 +327,6 @@ export default function TaskQueue() {
                       )}
                     </div>
                      <div className="flex items-center gap-2 shrink-0">
-                       {task.id === primaryTaskId && <Badge>Do this next</Badge>}
                        {(() => {
                          const timeDisplay = formatTimeDisplay(task.due, false, true);
                          return (
@@ -399,7 +397,6 @@ export default function TaskQueue() {
                       )}
                     </div>
                      <div className="flex items-center gap-2 shrink-0">
-                       {task.id === primaryTaskId && <Badge>Do this next</Badge>}
                        {(() => {
                          const timeDisplay = formatTimeDisplay(task.due, false, false);
                          return (
