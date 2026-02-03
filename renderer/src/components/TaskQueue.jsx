@@ -5,12 +5,20 @@ import { Button } from "./ui/button.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Input } from "./ui/input.jsx";
-import { ArrowLeft, Calendar, Check } from "./ui/icons.jsx";
+import { ArrowLeft, Calendar, Check, ExternalLink } from "./ui/icons.jsx";
+import { MarkdownText } from "./ui/markdown.jsx";
 
 function formatDue(iso) {
   if (!iso) return "";
   const date = new Date(iso);
   return date.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function priorityDot(priority) {
+  if (priority === 4) return "bg-red-500";
+  if (priority === 3) return "bg-amber-400";
+  if (priority === 2) return "bg-blue-500";
+  return "bg-zinc-500";
 }
 
 export default function TaskQueue() {
@@ -128,6 +136,13 @@ export default function TaskQueue() {
 
   useEffect(() => {
     loadQueue();
+    const intervalId = setInterval(loadQueue, 120_000);
+    const onFocus = () => loadQueue();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   const grouped = useMemo(() => {
@@ -137,13 +152,9 @@ export default function TaskQueue() {
     const overdue = [];
     const today = [];
     const upcoming = [];
-    const noDue = [];
     tasks.forEach((task) => {
       const due = task.due ? Date.parse(task.due) : null;
-      if (!due) {
-        noDue.push(task);
-        return;
-      }
+      if (!due) return;
       if (due < now) {
         overdue.push(task);
         return;
@@ -155,8 +166,10 @@ export default function TaskQueue() {
         upcoming.push(task);
       }
     });
-    return { overdue, today, upcoming, noDue };
+    return { overdue, today, upcoming };
   }, [tasks]);
+
+  const primaryTaskId = useMemo(() => tasks[0]?.id, [tasks]);
 
   return (
     <div className="min-h-screen bg-ink text-white">
@@ -174,7 +187,7 @@ export default function TaskQueue() {
           </Button>
           <h1 className="text-3xl font-semibold mt-2">Task Queue</h1>
           <p className="text-zinc-400 mt-2">
-            Open tasks sorted by due time.
+            AI ordered (fixed first, variable last).
           </p>
         </div>
 
@@ -188,9 +201,6 @@ export default function TaskQueue() {
           <div className="text-sm text-zinc-400">
             {tasks.length} task{tasks.length === 1 ? "" : "s"}
           </div>
-          <Button variant="secondary" onClick={loadQueue} disabled={!api.isAvailable()}>
-            Refresh
-          </Button>
         </div>
 
         {status && <p className="text-sm text-amber mb-4">{status}</p>}
@@ -209,20 +219,38 @@ export default function TaskQueue() {
                 {grouped.overdue.map((task) => (
                   <div
                     key={task.id}
-                    className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3"
+                    className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
+                      task.id === primaryTaskId
+                        ? "border-emerald-500/70 bg-emerald-500/10"
+                        : "border-zinc-800 bg-zinc-900/60"
+                    }`}
                   >
-                    <div>
-                      <div className="text-sm font-medium">{task.content}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium flex items-center gap-2 truncate">
+                        <span className={`h-2 w-2 rounded-full ${priorityDot(task.priority)}`} />
+                        <span className="truncate">{task.content}</span>
+                      </div>
                       {task.description && (
-                        <div className="text-xs text-zinc-400 mt-1">
-                          {task.description.slice(0, 120)}
+                        <div className="text-xs text-zinc-400 mt-1 truncate">
+                          <MarkdownText text={task.description} />
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
+                      {task.id === primaryTaskId && <Badge>Do this next</Badge>}
                       {task.is_recurring && <Badge variant="secondary">Recurring</Badge>}
                       <Badge variant="destructive">Overdue</Badge>
                       <span className="text-xs text-zinc-500">{formatDue(task.due)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => api.openTodoistTask(task.id)}
+                        disabled={!api.isAvailable()}
+                        aria-label="Open in Todoist"
+                        title="Open in Todoist"
+                      >
+                        <ExternalLink />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -266,20 +294,38 @@ export default function TaskQueue() {
                 {grouped.today.map((task) => (
                   <div
                     key={task.id}
-                    className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3"
+                    className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
+                      task.id === primaryTaskId
+                        ? "border-emerald-500/70 bg-emerald-500/10"
+                        : "border-zinc-800 bg-zinc-900/60"
+                    }`}
                   >
-                    <div>
-                      <div className="text-sm font-medium">{task.content}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium flex items-center gap-2 truncate">
+                        <span className={`h-2 w-2 rounded-full ${priorityDot(task.priority)}`} />
+                        <span className="truncate">{task.content}</span>
+                      </div>
                       {task.description && (
-                        <div className="text-xs text-zinc-400 mt-1">
-                          {task.description.slice(0, 120)}
+                        <div className="text-xs text-zinc-400 mt-1 truncate">
+                          <MarkdownText text={task.description} />
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
+                      {task.id === primaryTaskId && <Badge>Do this next</Badge>}
                       {task.is_recurring && <Badge variant="secondary">Recurring</Badge>}
                       <Badge variant="outline">Due</Badge>
                       <span className="text-xs text-zinc-500">{formatDue(task.due)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => api.openTodoistTask(task.id)}
+                        disabled={!api.isAvailable()}
+                        aria-label="Open in Todoist"
+                        title="Open in Todoist"
+                      >
+                        <ExternalLink />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -323,20 +369,38 @@ export default function TaskQueue() {
                 {grouped.upcoming.map((task) => (
                   <div
                     key={task.id}
-                    className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3"
+                    className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
+                      task.id === primaryTaskId
+                        ? "border-emerald-500/70 bg-emerald-500/10"
+                        : "border-zinc-800 bg-zinc-900/60"
+                    }`}
                   >
-                    <div>
-                      <div className="text-sm font-medium">{task.content}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium flex items-center gap-2 truncate">
+                        <span className={`h-2 w-2 rounded-full ${priorityDot(task.priority)}`} />
+                        <span className="truncate">{task.content}</span>
+                      </div>
                       {task.description && (
-                        <div className="text-xs text-zinc-400 mt-1">
-                          {task.description.slice(0, 120)}
+                        <div className="text-xs text-zinc-400 mt-1 truncate">
+                          <MarkdownText text={task.description} />
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
+                      {task.id === primaryTaskId && <Badge>Do this next</Badge>}
                       {task.is_recurring && <Badge variant="secondary">Recurring</Badge>}
                       <Badge variant="outline">Upcoming</Badge>
                       <span className="text-xs text-zinc-500">{formatDue(task.due)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => api.openTodoistTask(task.id)}
+                        disabled={!api.isAvailable()}
+                        aria-label="Open in Todoist"
+                        title="Open in Todoist"
+                      >
+                        <ExternalLink />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -367,60 +431,6 @@ export default function TaskQueue() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>No Due Date</CardTitle>
-              <CardDescription>Unscheduled tasks.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {grouped.noDue.length === 0 && (
-                  <p className="text-sm text-zinc-400">All tasks have due dates.</p>
-                )}
-                {grouped.noDue.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3"
-                  >
-                    <div>
-                      <div className="text-sm font-medium">{task.content}</div>
-                      {task.description && (
-                        <div className="text-xs text-zinc-400 mt-1">
-                          {task.description.slice(0, 120)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">No due date</Badge>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setPostponeTask(task);
-                          setPostponeReason("");
-                        }}
-                        disabled={!api.isAvailable()}
-                        aria-label="Postpone task"
-                        title="Postpone"
-                      >
-                        <Calendar />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => completeTask(task.id)}
-                        disabled={!api.isAvailable() || completingId === task.id}
-                        aria-label="Complete task"
-                        title="Complete"
-                      >
-                        <Check />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {postponeTask && (

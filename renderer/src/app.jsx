@@ -6,6 +6,7 @@ import DaemonConfig from "./components/DaemonConfig.jsx";
 import SchedulerControl from "./components/SchedulerControl.jsx";
 import UsageData from "./components/UsageData.jsx";
 import TaskQueue from "./components/TaskQueue.jsx";
+import QuickStart from "./components/QuickStart.jsx";
 
 function getRoute() {
   const url = new URL(window.location.href);
@@ -16,6 +17,7 @@ function getRoute() {
   if (page === "scheduler") return "scheduler";
   if (page === "data") return "data";
   if (page === "queue") return "queue";
+  if (page === "quick") return "quick";
   return "home";
 }
 
@@ -35,6 +37,7 @@ export default function App() {
     if (route === "scheduler") return <SchedulerControl />;
     if (route === "data") return <UsageData />;
     if (route === "queue") return <TaskQueue />;
+    if (route === "quick") return <QuickStart />;
     return <Home />;
   }, [route]);
 

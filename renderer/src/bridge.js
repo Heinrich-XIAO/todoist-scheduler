@@ -20,6 +20,9 @@ const fallback = {
   snapOverlay: async () => ({ ok: false }),
   getUsageDashboard: async () => ({ ok: false, time: {}, counts: {}, top_tasks: [], recent_events: [] }),
   getTaskQueue: async () => ({ ok: false, tasks: [] }),
+  openTodoistTask: async () => ({ ok: false }),
+  startQuickTask: async () => ({ ok: false }),
+  closeQuickWindow: async () => ({ ok: false }),
   onOverlayMode: () => {},
 };
 
@@ -47,6 +50,9 @@ const api = {
   snapOverlay: () => current().snapOverlay(),
   getUsageDashboard: () => current().getUsageDashboard(),
   getTaskQueue: () => current().getTaskQueue(),
+  openTodoistTask: (taskId) => current().openTodoistTask(taskId),
+  startQuickTask: (payload) => current().startQuickTask(payload),
+  closeQuickWindow: () => current().closeQuickWindow(),
   onOverlayMode: (handler) => current().onOverlayMode(handler),
 };
 

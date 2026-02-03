@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld("todoist", {
   snapOverlay: () => ipcRenderer.invoke("snap-overlay"),
   getUsageDashboard: () => ipcRenderer.invoke("get-usage-dashboard"),
   getTaskQueue: () => ipcRenderer.invoke("get-task-queue"),
+  openTodoistTask: (taskId) => ipcRenderer.invoke("open-task-in-todoist", taskId),
+  startQuickTask: (payload) => ipcRenderer.invoke("start-quick-task", payload),
+  closeQuickWindow: () => ipcRenderer.invoke("close-quick-window"),
   onOverlayMode: (handler) =>
     ipcRenderer.on("overlay-mode", (_event, mode) => handler(mode)),
 });

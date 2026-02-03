@@ -16,7 +16,7 @@ const cards = [
   },
   {
     title: "Task Queue",
-    description: "Overdue and due-today tasks in order.",
+    description: "AI-ordered queue for today and upcoming tasks.",
     route: "/?page=queue",
   },
   {

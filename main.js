@@ -7,13 +7,15 @@ import {
   Tray,
   Menu,
   nativeImage,
+  shell,
+  globalShortcut,
 } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import os from "os";
 import dotenv from "dotenv";
-import { execFileSync } from "child_process";
+import { execFileSync, execFile } from "child_process";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -179,6 +181,7 @@ const OFFLINE_KEYWORDS = [
 
 let mainWindow = null;
 let overlayWindow = null;
+let quickWindow = null;
 let overlayTask = null;
 let overlayMode = "full";
 let schedulerInstance = null;
@@ -194,6 +197,15 @@ let activeOverlays = new Set();
 
 ensureDir(DATA_DIR);
 ensureDir(LOG_DIR);
+
+const persistedStatus = loadSchedulerStatus();
+schedulerStatus = {
+  lastRun: persistedStatus.lastRun || null,
+  nextRun: persistedStatus.nextRun || null,
+  lastError: persistedStatus.lastError || null,
+};
+notificationCount = Number(persistedStatus.notificationCount || 0);
+lastNotificationAt = persistedStatus.lastNotificationAt || null;
 
 const logFile = path.join(LOG_DIR, "electron.log");
 function log(message) {
@@ -366,6 +378,29 @@ function createMainWindow() {
     if (app.isQuiting) return;
     event.preventDefault();
     mainWindow.hide();
+  });
+}
+
+function createQuickWindow() {
+  if (quickWindow) return;
+  quickWindow = new BrowserWindow({
+    width: 520,
+    height: 360,
+    resizable: false,
+    fullscreenable: false,
+    maximizable: false,
+    minimizable: false,
+    alwaysOnTop: true,
+    backgroundColor: "#0b0b0b",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+    },
+  });
+  quickWindow.setMenuBarVisibility(false);
+  quickWindow.loadURL(`${getAppUrl()}?page=quick`);
+  quickWindow.on("closed", () => {
+    quickWindow = null;
   });
 }
 
@@ -571,6 +606,14 @@ function timeStatsPath() {
   return path.join(DATA_DIR, "task_time.json");
 }
 
+function schedulerStatusPath() {
+  return path.join(DATA_DIR, "scheduler_status.json");
+}
+
+function analyticsPath() {
+  return path.join(DATA_DIR, "task_analytics.json");
+}
+
 function usagePath() {
   return path.join(DATA_DIR, "usage.json");
 }
@@ -605,6 +648,82 @@ function loadTimeStats() {
 
 function saveTimeStats(stats) {
   writeJson(timeStatsPath(), stats);
+}
+
+function loadSchedulerStatus() {
+  return readJson(schedulerStatusPath(), {
+    lastRun: null,
+    nextRun: null,
+    lastError: null,
+    notificationCount: 0,
+    lastNotificationAt: null,
+  });
+}
+
+function saveSchedulerStatus() {
+  writeJson(schedulerStatusPath(), {
+    ...schedulerStatus,
+    notificationCount,
+    lastNotificationAt,
+  });
+}
+
+function loadAnalytics() {
+  return readJson(analyticsPath(), {
+    tasks: {},
+    estimates: {},
+    daily_stats: {},
+  });
+}
+
+function saveAnalytics(data) {
+  writeJson(analyticsPath(), data);
+}
+
+function recordTaskCompletion(taskId, taskName, estimatedMinutes, actualMinutes, completed = true) {
+  if (!taskId || !Number.isFinite(estimatedMinutes) || !Number.isFinite(actualMinutes)) return;
+  const data = loadAnalytics();
+  const today = new Date().toISOString().slice(0, 10);
+  const record = {
+    timestamp: new Date().toISOString(),
+    task_name: taskName || "",
+    estimated_minutes: Math.round(estimatedMinutes),
+    actual_minutes: Math.round(actualMinutes * 10) / 10,
+    completed,
+  };
+
+  data.tasks = data.tasks || {};
+  data.estimates = data.estimates || {};
+  data.daily_stats = data.daily_stats || {};
+
+  data.tasks[taskId] = data.tasks[taskId] || [];
+  data.tasks[taskId].push(record);
+
+  if (taskName) {
+    data.estimates[taskName] = data.estimates[taskName] || { estimated: [], actual: [] };
+    data.estimates[taskName].estimated.push(record.estimated_minutes);
+    data.estimates[taskName].actual.push(record.actual_minutes);
+  }
+
+  data.daily_stats[today] = data.daily_stats[today] || {
+    tasks_completed: 0,
+    tasks_partial: 0,
+    total_time_minutes: 0,
+    accuracy_sum: 0,
+    accuracy_count: 0,
+  };
+  const daily = data.daily_stats[today];
+  if (completed) daily.tasks_completed += 1;
+  else daily.tasks_partial += 1;
+  daily.total_time_minutes += record.actual_minutes;
+  if (record.estimated_minutes > 0) {
+    const accuracy = Math.min(record.estimated_minutes, record.actual_minutes) /
+      Math.max(record.estimated_minutes, record.actual_minutes);
+    daily.accuracy_sum += accuracy;
+    daily.accuracy_count += 1;
+  }
+
+  saveAnalytics(data);
 }
 
 function loadUsage() {
@@ -764,7 +883,14 @@ function startSession(taskId, taskName, mode) {
     taskName: taskName || "",
     mode: mode || "full",
   });
+  playSpotify();
   logUsage("session_start", { task_id: taskId, task_name: taskName || "", mode: mode || "full" });
+}
+
+function getActiveSessionSeconds(taskId) {
+  const active = activeSessions.get(taskId);
+  if (!active?.start) return null;
+  return Math.max(0, Math.floor((Date.now() - active.start) / 1000));
 }
 
 function stopSession(taskId, fallbackSeconds, modeOverride) {
@@ -832,7 +958,61 @@ function hasDontChangeTime(task) {
 function parseDuration(description) {
   const match = /(?:^|\s)(\d{1,3})m\b/.exec(description || "");
   if (!match) return null;
-  return parseInt(match[1], 10);
+  const minutes = parseInt(match[1], 10);
+  if (!Number.isFinite(minutes)) return null;
+  const rounded = Math.round(minutes / INTERVAL_MINUTES) * INTERVAL_MINUTES;
+  return Math.max(5, rounded);
+}
+
+const QUICK_KEYWORDS = [
+  "check",
+  "quick",
+  "brief",
+  "short",
+  "email",
+  "text",
+  "call",
+  "review",
+  "confirm",
+  "verify",
+  "remind",
+  "note",
+  "list",
+];
+
+const MEDIUM_KEYWORDS = [
+  "read",
+  "watch",
+  "install",
+  "setup",
+  "configure",
+  "update",
+  "change",
+  "cancel",
+  "make",
+  "create",
+  "write",
+];
+
+const LONG_KEYWORDS = [
+  "build",
+  "develop",
+  "implement",
+  "research",
+  "study",
+  "learn",
+  "clean",
+  "organize",
+  "project",
+  "essay",
+];
+
+function estimateDurationHeuristic(task, description) {
+  const text = `${task} ${description}`.toLowerCase();
+  if (QUICK_KEYWORDS.some((kw) => text.includes(kw))) return 10;
+  if (MEDIUM_KEYWORDS.some((kw) => text.includes(kw))) return 25;
+  if (LONG_KEYWORDS.some((kw) => text.includes(kw))) return 45;
+  return 30;
 }
 
 function addDurationToDescription(description, minutes) {
@@ -846,7 +1026,7 @@ async function estimateDuration(task, description) {
   if (parsed) return { minutes: parsed, userSpecified: true };
   const ai = await estimateMinutes(task, description);
   if (ai) return { minutes: ai, userSpecified: false };
-  return { minutes: 10, userSpecified: false };
+  return { minutes: estimateDurationHeuristic(task, description), userSpecified: false };
 }
 
 async function estimateMinutes(task, description) {
@@ -915,6 +1095,169 @@ async function openrouterChat(system, prompt, maxTokens) {
   } catch (err) {
     return null;
   }
+}
+
+function speakTask(message) {
+  if (!message) return;
+  const firstLine = String(message).split("\n")[0];
+  if (!firstLine) return;
+  const text = `Todo: ${firstLine}`;
+  execFile("say", [text], () => {});
+}
+
+function playSpotify() {
+  try {
+    execFileSync("osascript", ["-e", 'tell application "Spotify" to play'], {
+      stdio: "ignore",
+    });
+  } catch (err) {
+    try {
+      execFileSync("osascript", ["-e", 'tell application "Spotify" to activate'], {
+        stdio: "ignore",
+      });
+      execFileSync("osascript", ["-e", 'tell application "Spotify" to play'], {
+        stdio: "ignore",
+      });
+    } catch (inner) {
+      // ignore
+    }
+  }
+}
+
+function safeParseJsonArray(text) {
+  if (!text) return null;
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+  } catch (err) {
+    // fallthrough
+  }
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]);
+    if (Array.isArray(parsed)) return parsed;
+  } catch (err) {
+    return null;
+  }
+  return null;
+}
+
+async function aiOrderQueue(tasks) {
+  if (!OPENROUTER_KEY) return null;
+  const payload = tasks.map((task) => ({
+    id: task.id,
+    content: task.content,
+    description: task.description || "",
+    due: task.due ? task.due.toISOString() : null,
+    priority: task.priority || 1,
+    duration_minutes: task.duration_minutes || null,
+    has_fixed_duration: Boolean(task.duration_minutes),
+  }));
+  const prompt =
+    "Order these tasks for a single day. " +
+    "Return ONLY a JSON array of task ids in the recommended order. " +
+    "Put fixed-duration tasks earlier in the day and variable tasks later. " +
+    "Respect due times and priority where possible.\n\n" +
+    JSON.stringify(payload);
+  const content = await openrouterChat(
+    "You order tasks. Reply only with JSON array of ids.",
+    prompt,
+    200
+  );
+  const ids = safeParseJsonArray(content);
+  if (!ids || ids.length === 0) return null;
+  return ids.map((id) => String(id));
+}
+
+function priorityRank(priority) {
+  const value = Number(priority || 1);
+  return Number.isFinite(value) ? value : 1;
+}
+
+function sortFixedTasks(tasks, rankMap) {
+  return [...tasks].sort((a, b) => {
+    const durationDiff = (a.duration_minutes || 0) - (b.duration_minutes || 0);
+    if (durationDiff !== 0) return durationDiff;
+    const rankDiff = (rankMap?.get(a.id) ?? 1e9) - (rankMap?.get(b.id) ?? 1e9);
+    if (rankDiff !== 0) return rankDiff;
+    const dueDiff = a.due.getTime() - b.due.getTime();
+    if (dueDiff !== 0) return dueDiff;
+    return priorityRank(b.priority) - priorityRank(a.priority);
+  });
+}
+
+function sortVariableTasks(tasks, rankMap) {
+  return [...tasks].sort((a, b) => {
+    const rankDiff = (rankMap?.get(a.id) ?? 1e9) - (rankMap?.get(b.id) ?? 1e9);
+    if (rankDiff !== 0) return rankDiff;
+    const dueDiff = a.due.getTime() - b.due.getTime();
+    if (dueDiff !== 0) return dueDiff;
+    return priorityRank(b.priority) - priorityRank(a.priority);
+  });
+}
+
+function isFixedTask(task) {
+  return Number.isFinite(task.duration_minutes) && task.duration_minutes > 0;
+}
+
+function splitByDay(tasks) {
+  const now = Date.now();
+  const today = new Date();
+  const overdue = [];
+  const todayTasks = [];
+  const upcoming = [];
+  tasks.forEach((task) => {
+    const dueMs = task.due.getTime();
+    if (dueMs < now) {
+      overdue.push(task);
+      return;
+    }
+    const sameDay = task.due.getFullYear() === today.getFullYear() &&
+      task.due.getMonth() === today.getMonth() &&
+      task.due.getDate() === today.getDate();
+    if (sameDay) {
+      todayTasks.push(task);
+    } else {
+      upcoming.push(task);
+    }
+  });
+  return { overdue, today: todayTasks, upcoming };
+}
+
+async function orderQueueTasks(tasks) {
+  if (tasks.length === 0) return [];
+  const aiOrder = await aiOrderQueue(tasks);
+  const rankMap = new Map();
+  if (aiOrder) {
+    aiOrder.forEach((id, index) => rankMap.set(id, index));
+  }
+  const orderSource = aiOrder ? "ai" : "fallback";
+  logUsage("queue_order", { source: orderSource, count: tasks.length });
+
+  const { overdue, today, upcoming } = splitByDay(tasks);
+  const sortGroup = (group) => {
+    const fixed = group.filter(isFixedTask);
+    const variable = group.filter((task) => !isFixedTask(task));
+    if (aiOrder) {
+      return [...sortFixedTasks(fixed, rankMap), ...sortVariableTasks(variable, rankMap)];
+    }
+    const fixedFallback = [...fixed].sort((a, b) => {
+      const dueDiff = a.due.getTime() - b.due.getTime();
+      if (dueDiff !== 0) return dueDiff;
+      const durationDiff = (a.duration_minutes || 0) - (b.duration_minutes || 0);
+      if (durationDiff !== 0) return durationDiff;
+      return priorityRank(b.priority) - priorityRank(a.priority);
+    });
+    const variableFallback = [...variable].sort((a, b) => {
+      const dueDiff = a.due.getTime() - b.due.getTime();
+      if (dueDiff !== 0) return dueDiff;
+      return priorityRank(b.priority) - priorityRank(a.priority);
+    });
+    return [...fixedFallback, ...variableFallback];
+  };
+
+  return [...sortGroup(overdue), ...sortGroup(today), ...sortGroup(upcoming)];
 }
 
 function normalizeDay(day) {
@@ -1034,7 +1377,9 @@ class Scheduler {
       if (!task.due || !task.due.date) continue;
       const due = getTaskDate(task);
       if (!due || !isSameDay(due, this.today)) continue;
-      const duration = parseDuration(task.description || "") || 10;
+      const duration =
+        parseDuration(task.description || "") ||
+        estimateDurationHeuristic(task.content || "", task.description || "");
       const numBlocks = Math.max(1, Math.ceil(duration / INTERVAL_MINUTES));
       for (let i = 0; i < numBlocks; i += 1) {
         const blockTime = new Date(due.getTime() + i * INTERVAL_MINUTES * 60_000);
@@ -1220,8 +1565,10 @@ class Scheduler {
 
       let timeSlot = null;
       if (isDateOnly(task)) {
-        const targetDate = new Date(task.due.date + "T00:00:00");
-        if (!isSameDay(targetDate, this.today)) continue;
+        let targetDate = new Date(task.due.date + "T00:00:00");
+        if (!isSameDay(targetDate, this.today)) {
+          targetDate = new Date(this.today.getTime());
+        }
         timeSlot = this.findGapForTask(gaps, numBlocks);
         if (!timeSlot) {
           timeSlot = this.findAvailableSlotForDate(startTime, numBlocks, targetDate);
@@ -1247,6 +1594,7 @@ class Scheduler {
   }
 
   async run() {
+    this.today = nowDate();
     await this.fetchTasks();
     await this.applyAutoPriorities();
     this.buildBlockedTimes();
@@ -1364,6 +1712,8 @@ async function notifyTask(task) {
   }).show();
   notificationCount += 1;
   lastNotificationAt = new Date().toISOString();
+  saveSchedulerStatus();
+  speakTask(task.description ? `${task.content}\n${task.description}` : task.content);
   logUsage("notification", {
     task_id: task.id,
     task_name: task.content || "",
@@ -1422,11 +1772,12 @@ async function checkAndNotify() {
       if (overlayWindow) return;
       activeOverlays.add(task.id);
       logUsage("overlay_show", { task_id: task.id, task_name: task.content || "" });
+      const duration = await estimateDuration(task.content || "", task.description || "");
       overlayTask = {
         id: task.id,
         content: task.content,
         description: task.description || "",
-        estimatedMinutes: parseDuration(task.description || "") || 30,
+        estimatedMinutes: duration.minutes || 30,
         snoozeCount: 0,
       };
       overlayMode = "full";
@@ -1475,15 +1826,18 @@ function startLoops() {
       await scheduler.run();
       schedulerStatus.lastRun = new Date().toISOString();
       schedulerStatus.lastError = null;
+      saveSchedulerStatus();
       logUsage("scheduler_run_auto", { ok: true });
     } catch (err) {
       schedulerStatus.lastError = String(err);
       log(`Scheduler error: ${err}`);
+      saveSchedulerStatus();
       logUsage("scheduler_run_auto", { ok: false, error: String(err) });
     } finally {
       schedulerStatus.nextRun = new Date(
         Date.now() + SCHEDULER_INTERVAL_MS
       ).toISOString();
+      saveSchedulerStatus();
     }
   };
 
@@ -1516,17 +1870,60 @@ ipcMain.handle("set-overlay-mode", (_event, mode) => {
   return { ok: true };
 });
 
+ipcMain.handle("start-quick-task", async (_event, payload) => {
+  const taskName = payload?.taskName?.trim();
+  const description = payload?.description?.trim() || "";
+  if (!taskName) return { ok: false };
+  const estimate = await estimateDuration(taskName, description);
+  overlayTask = {
+    id: `quick-${Date.now()}`,
+    content: taskName,
+    description,
+    estimatedMinutes: estimate.minutes || 30,
+    snoozeCount: 0,
+    local: true,
+  };
+  overlayMode = "full";
+  ensureOverlayWindow();
+  setOverlayMode("full");
+  if (quickWindow) {
+    quickWindow.close();
+  }
+  logUsage("quick_task_start", { task_name: taskName });
+  return { ok: true, taskId: overlayTask.id, estimatedMinutes: overlayTask.estimatedMinutes };
+});
+
+ipcMain.handle("close-quick-window", () => {
+  if (quickWindow) quickWindow.close();
+  return { ok: true };
+});
+
 ipcMain.handle("complete-task", async (_event, taskId) => {
+  const sessionSeconds = getActiveSessionSeconds(taskId);
+  const analyticsTaskName = overlayTask?.id === taskId ? overlayTask.content : "";
+  const analyticsEstimate = overlayTask?.id === taskId ? overlayTask.estimatedMinutes : null;
   stopSession(taskId, null, overlayMode);
   logUsage("task_complete", { task_id: taskId, mode: overlayMode });
   let ok = true;
   let error = null;
-  try {
-    await todoistFetch(`/tasks/${taskId}/close`, { method: "POST" });
-  } catch (err) {
-    log(`Complete task failed: ${err}`);
-    ok = false;
-    error = String(err);
+  const isLocal = overlayTask?.id === taskId && overlayTask?.local;
+  if (!isLocal) {
+    try {
+      await todoistFetch(`/tasks/${taskId}/close`, { method: "POST" });
+    } catch (err) {
+      log(`Complete task failed: ${err}`);
+      ok = false;
+      error = String(err);
+    }
+  }
+  if (ok && Number.isFinite(analyticsEstimate) && Number.isFinite(sessionSeconds)) {
+    recordTaskCompletion(
+      taskId,
+      analyticsTaskName,
+      analyticsEstimate,
+      sessionSeconds / 60,
+      true
+    );
   }
   const state = loadOverlayState();
   if (state.active_tasks?.[taskId]) delete state.active_tasks[taskId];
@@ -1639,11 +2036,13 @@ ipcMain.handle("run-scheduler-now", async () => {
     }
     await schedulerInstance.run();
     schedulerStatus.lastRun = new Date().toISOString();
+    saveSchedulerStatus();
     logUsage("scheduler_run_manual", { ok: true });
     return { ok: true };
   } catch (err) {
     log(`Scheduler manual run failed: ${err}`);
     schedulerStatus.lastError = String(err);
+    saveSchedulerStatus();
     logUsage("scheduler_run_manual", { ok: false, error: String(err) });
     return { ok: false };
   }
@@ -1659,29 +2058,42 @@ ipcMain.handle("get-scheduler-status", () => {
   };
 });
 
+ipcMain.handle("open-task-in-todoist", (_event, taskId) => {
+  if (!taskId) return { ok: false };
+  const url = `https://todoist.com/showTask?id=${taskId}`;
+  shell.openExternal(url);
+  logUsage("task_open_todoist", { task_id: taskId });
+  return { ok: true };
+});
+
 ipcMain.handle("get-task-queue", async () => {
   try {
     const tasks = await fetchTasks();
-    const queue = tasks
+    const queueCandidates = tasks
       .filter((task) => !isTaskCompleted(task))
-      .map((task) => ({
-        id: task.id,
-        content: task.content,
-        description: task.description || "",
-        due: getTaskDate(task),
-        is_recurring: task.due?.is_recurring || false,
-        priority: task.priority,
-        has_due: Boolean(task.due?.date || task.due?.datetime),
-      }))
-      .sort((a, b) => {
-        const aTime = a.due ? a.due.getTime() : Number.POSITIVE_INFINITY;
-        const bTime = b.due ? b.due.getTime() : Number.POSITIVE_INFINITY;
-        return aTime - bTime;
+      .filter((task) => task.due?.date || task.due?.datetime)
+      .map((task) => {
+        let due = getTaskDate(task);
+        if (due && isDateOnly(task)) {
+          due = new Date(due.getFullYear(), due.getMonth(), due.getDate(), 23, 59, 59);
+        }
+        const duration = parseDuration(task.description || "");
+        return {
+          id: task.id,
+          content: task.content,
+          description: task.description || "",
+          due,
+          is_recurring: task.due?.is_recurring || false,
+          priority: task.priority,
+          duration_minutes: duration,
+        };
       })
-      .map((task) => ({
-        ...task,
-        due: task.due ? task.due.toISOString() : null,
-      }));
+      .filter((task) => Boolean(task.due));
+    const ordered = await orderQueueTasks(queueCandidates);
+    const queue = ordered.map((task) => ({
+      ...task,
+      due: task.due ? task.due.toISOString() : null,
+    }));
     return { ok: true, tasks: queue };
   } catch (err) {
     log(`Failed to fetch task queue: ${err}`);
@@ -1716,10 +2128,21 @@ app.whenReady().then(() => {
   enableAutostart();
   createMainWindow();
   createTray();
+  const registered = globalShortcut.register("Control+Space", () => {
+    if (!quickWindow) createQuickWindow();
+    if (quickWindow) {
+      quickWindow.show();
+      quickWindow.focus();
+    }
+  });
+  if (!registered) {
+    log("Failed to register Control+Space global shortcut");
+  }
   startLoops();
 });
 
 app.on("before-quit", () => {
+  globalShortcut.unregisterAll();
   for (const taskId of activeSessions.keys()) {
     stopSession(taskId, null, overlayMode);
   }

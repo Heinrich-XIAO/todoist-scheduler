@@ -4,6 +4,7 @@ import { Button } from "./ui/button.jsx";
 import { Input } from "./ui/input.jsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.jsx";
 import { ArrowDownRight, Calendar, Clock, X } from "./ui/icons.jsx";
+import { MarkdownText } from "./ui/markdown.jsx";
 
 function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -196,9 +197,14 @@ export default function Overlay() {
           </div>
       ) : (
         <div className="h-full w-full bg-ink text-white flex flex-col items-center justify-center gap-6">
-          <h1 className="text-5xl font-semibold text-center max-w-4xl">{task.content}</h1>
+          <h1 className="text-5xl font-semibold text-center max-w-4xl break-words">
+            {task.content}
+          </h1>
           {task.description && (
-            <p className="text-lg text-zinc-400 max-w-3xl text-center">{task.description}</p>
+            <MarkdownText
+              text={task.description}
+              className="text-lg text-zinc-400 max-w-3xl text-center break-words"
+            />
           )}
 
           {!timerStarted ? (
