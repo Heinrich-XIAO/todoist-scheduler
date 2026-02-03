@@ -23,6 +23,11 @@ const repoRoot = path.resolve(__dirname);
 
 dotenv.config({ path: path.join(repoRoot, ".env.local") });
 
+// Disable network service sandbox to prevent crashes
+app.commandLine.appendSwitch("disable-features", "NetworkService,NetworkServiceSandbox");
+app.commandLine.appendSwitch("disable-gpu-sandbox");
+app.commandLine.appendSwitch("disable-software-rasterizer");
+
 const DATA_DIR =
   process.env.TODOIST_SCHEDULER_DATA_DIR || path.join(repoRoot, "data");
 const LOG_DIR = path.join(DATA_DIR, "logs");

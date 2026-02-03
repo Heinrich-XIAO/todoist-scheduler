@@ -58,7 +58,7 @@ const env = {
   VITE_DEV_SERVER_URL: `http://localhost:${port}`,
 };
 
-const child = spawn(electronPath, ["."], {
+const child = spawn(electronPath, [".", "--disable-features=NetworkService"], {
   cwd: repoRoot,
   stdio: "inherit",
   env,
