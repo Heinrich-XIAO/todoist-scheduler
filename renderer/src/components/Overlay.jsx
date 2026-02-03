@@ -31,6 +31,7 @@ export default function Overlay() {
   const [status, setStatus] = useState("");
   const [sessionStarted, setSessionStarted] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -138,6 +139,7 @@ export default function Overlay() {
       });
       setSessionStarted(false);
     }
+    
     const result = await api.postponeTask({
       taskId: task.id,
       taskName: task.content,
@@ -147,7 +149,22 @@ export default function Overlay() {
       estimatedMinutes: task.estimatedMinutes || 30,
       reason: reason.trim(),
     });
-    setStatus(result.sleep ? "Sleep mode enabled" : "Postponed, next task queued");
+    
+    if (result.customPostponed && result.parsedDate) {
+      const dateObj = new Date(result.parsedDate);
+      const formatted = dateObj.toLocaleString([], { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      setStatus(`Postponed to ${formatted} - scheduler will not move it`);
+    } else if (result.sleep) {
+      setStatus("Sleep mode enabled - tasks will resume tomorrow");
+    } else {
+      setStatus("Postponed 30 minutes - next task queued");
+    }
     setPostponeOpen(false);
     setReason("");
   };
@@ -160,6 +177,8 @@ export default function Overlay() {
     );
   }
 
+  const progressColor = progress >= 100 ? "bg-amber-500" : "bg-emerald-500/30";
+
   return (
     <div
       className={`h-screen w-screen overlay-drag ${mode === "corner" ? "p-0" : "p-10"}`}
@@ -170,33 +189,73 @@ export default function Overlay() {
         setDragging(true);
       }}
     >
+      {/* Progress bar background */}
+      <div 
+        className={`absolute inset-0 ${progressColor} transition-all duration-1000 ease-linear`}
+        style={{ 
+          width: `${Math.min(progress, 100)}%`,
+          zIndex: 0 
+        }}
+      />
       {dragging && mode === "corner" && (
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-10 w-[320px] h-[70px] border border-dashed border-amber/70 rounded-2xl pointer-events-none" />
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-10 w-[320px] h-[70px] border border-dashed border-amber/70 rounded-2xl pointer-events-none z-50" />
       )}
       {mode === "corner" ? (
-          <div className="h-full w-full bg-zinc-900/90 border border-zinc-700 rounded-2xl flex items-center px-4">
-            <div className="text-sm font-semibold mr-4">{formatTime(elapsed)}</div>
-            <div className="flex-1 text-sm truncate">{task.content}</div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={async () => {
-                if (sessionStarted) {
-                  await api.stopTaskSession({
-                    taskId: task.id,
-                    elapsedSeconds: elapsed,
-                    mode,
-                  });
-                  setSessionStarted(false);
-                }
-                await api.completeTask(task.id);
-              }}
-            >
-              Complete
-            </Button>
+          <div 
+            className="h-full w-full bg-zinc-900/90 border border-zinc-700 rounded-2xl flex items-center px-4 relative z-10 cursor-pointer"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+          >
+            {!isHovered ? (
+              <>
+                <div className="text-sm font-semibold mr-4">{formatTime(elapsed)}</div>
+                <div className="flex-1 text-sm truncate">{task.content}</div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={async () => {
+                    if (sessionStarted) {
+                      await api.stopTaskSession({
+                        taskId: task.id,
+                        elapsedSeconds: elapsed,
+                        mode,
+                      });
+                      setSessionStarted(false);
+                    }
+                    await api.completeTask(task.id);
+                  }}
+                >
+                  Complete
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={onSnooze}
+                  aria-label="Wait 5 min"
+                  title="Wait 5 min"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  onClick={() => {
+                    console.log("[Overlay] Opening postpone modal");
+                    setPostponeOpen(true);
+                  }}
+                  aria-label="Postpone"
+                  title="Postpone"
+                >
+                  <Calendar className="h-5 w-5" />
+                </Button>
+              </div>
+            )}
           </div>
       ) : (
-        <div className="h-full w-full bg-ink text-white flex flex-col items-center justify-center gap-6">
+        <div className="h-full w-full bg-ink/95 text-white flex flex-col items-center justify-center gap-6 relative z-10">
           <h1 className="text-5xl font-semibold text-center max-w-4xl break-words">
             {task.content}
           </h1>
@@ -275,7 +334,10 @@ export default function Overlay() {
                 <Button
                   size="icon"
                   variant="secondary"
-                  onClick={() => setPostponeOpen(true)}
+                  onClick={() => {
+                    console.log("[Overlay] Opening postpone modal (timer active)");
+                    setPostponeOpen(true);
+                  }}
                   aria-label="Postpone"
                   title="Postpone"
                 >
@@ -306,7 +368,7 @@ export default function Overlay() {
       )}
 
       {(postponeOpen || justificationOpen) && (
-        <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
           <Card className="w-[520px]">
             <CardHeader>
               <CardTitle>
@@ -317,12 +379,12 @@ export default function Overlay() {
               <p className="text-sm text-zinc-400 mb-4">
                 {justificationOpen
                   ? "Be specific. The assistant will decide."
-                  : "If it's sleep-related, tasks will pause until next start window."}
+                  : "Examples: 'tomorrow', 'next Monday', 'sleep', 'in 2 hours'. The AI will extract the time."}
               </p>
               <Input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Type your reason"
+                placeholder="Type your reason or when to postpone to"
                 className="mb-4"
               />
               <div className="flex justify-end gap-3">

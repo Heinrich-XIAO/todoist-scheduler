@@ -1082,6 +1082,39 @@ async function isDailyActivity(task, description) {
   return content.toUpperCase().includes("YES") && !content.toUpperCase().includes("NO");
 }
 
+async function parseNaturalLanguageDate(text) {
+  if (!OPENROUTER_KEY || !text) return null;
+  
+  const now = new Date();
+  const currentDateStr = now.toISOString().slice(0, 10);
+  const currentTimeStr = now.toTimeString().slice(0, 5);
+  
+  const prompt =
+    `Current date: ${currentDateStr}\n` +
+    `Current time: ${currentTimeStr}\n\n` +
+    `Parse this text and extract a specific date/time: "${text}"\n\n` +
+    "Reply with ONLY an ISO 8601 datetime string (e.g., 2024-01-15T14:30:00) or 'NONE' if no date found.";
+  
+  const content = await openrouterChat(
+    "You parse natural language dates. Reply only with ISO datetime or NONE.",
+    prompt,
+    30
+  );
+  
+  if (!content) return null;
+  
+  const cleaned = content.trim().toUpperCase();
+  if (cleaned === "NONE" || cleaned.includes("NONE")) return null;
+  
+  // Try to extract ISO date from the response
+  const isoMatch = content.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  if (isoMatch) {
+    return isoMatch[0];
+  }
+  
+  return null;
+}
+
 async function openrouterChat(system, prompt, maxTokens) {
   try {
     const res = await fetch(`${OPENROUTER_PROXY.replace(/\/$/, "")}/chat/completions`, {
@@ -1768,7 +1801,13 @@ async function checkAndNotify() {
 
     const dueDate = getTaskDate(task);
     if (dueDate && now.getTime() - dueDate.getTime() > 5 * 60 * 60_000) {
+      const hoursOverdue = Math.round((now.getTime() - dueDate.getTime()) / 60 / 60_000);
       const isDaily = await isDailyActivity(task.content || "", task.description || "");
+      
+      log(`[OVERDUE_DEBUG] Task: "${task.content}" | ${hoursOverdue}h overdue | isDaily: ${isDaily} | ` +
+          `OPENROUTER_KEY: ${OPENROUTER_KEY ? "set" : "missing"} | ` +
+          `Content: "${task.content || "empty"}" | Description: "${task.description || "empty"}"`);
+      
       if (isDaily) {
         try {
           await todoistFetch(`/tasks/${task.id}/close`, { method: "POST" });
@@ -2005,6 +2044,40 @@ ipcMain.handle("snooze-task", (_event, payload) => {
 ipcMain.handle("postpone-task", async (_event, payload) => {
   const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes, reason } = payload;
   stopSession(taskId, elapsedSeconds, mode);
+  
+  // Try to parse a date from the reason using AI
+  let customDueDateTime = null;
+  if (reason) {
+    customDueDateTime = await parseNaturalLanguageDate(reason);
+    if (customDueDateTime) {
+      log(`AI parsed date from "${reason}": ${customDueDateTime}`);
+    }
+  }
+  
+  // If AI parsed a date, update the task in Todoist with that time
+  if (customDueDateTime) {
+    try {
+      // Add the #dontchangetime label to prevent scheduler from moving it
+      const labels = ["#dontchangetime"];
+      await todoistFetch(`/tasks/${taskId}`, {
+        method: "POST",
+        body: JSON.stringify({
+          due_datetime: customDueDateTime,
+          labels: labels,
+        }),
+      });
+      logUsage("task_postpone_custom_time", {
+        task_id: taskId,
+        task_name: taskName || "",
+        reason: reason,
+        parsed_date: customDueDateTime,
+      });
+    } catch (err) {
+      log(`Failed to postpone task to custom time: ${err}`);
+      return { ok: false, error: String(err) };
+    }
+  }
+  
   logUsage("task_postpone", {
     task_id: taskId,
     task_name: taskName || "",
@@ -2025,6 +2098,8 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
     snooze_count: 0,
     snooze_until: snoozeUntil,
     snoozed: true,
+    custom_postponed: customDueDateTime ? true : false,
+    custom_due: customDueDateTime || null,
   };
   if (isSleep) {
     state.sleep_until = snoozeUntil;
@@ -2040,7 +2115,7 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
       checkAndNotify().catch((err) => log(`Notifier error: ${err}`));
     }, 1000);
   }
-  return { ok: true, sleep: isSleep };
+  return { ok: true, sleep: isSleep, customPostponed: customDueDateTime ? true : false, parsedDate: customDueDateTime };
 });
 
 ipcMain.handle("start-task-session", (_event, payload) => {

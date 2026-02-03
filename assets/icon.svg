@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1b1b1b"/>
+      <stop offset="100%" style="stop-color:#0b0b0b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2b5dff"/>
+      <stop offset="100%" style="stop-color:#1e90ff"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="180" fill="url(#bg)"/>
+  
+  <!-- Clock/Calendar circle -->
+  <circle cx="512" cy="512" r="350" fill="none" stroke="url(#accent)" stroke-width="60"/>
+  
+  <!-- Clock hands -->
+  <line x1="512" y1="512" x2="512" y2="280" stroke="url(#accent)" stroke-width="60" stroke-linecap="round"/>
+  <line x1="512" y1="512" x2="680" y2="512" stroke="url(#accent)" stroke-width="60" stroke-linecap="round"/>
+  
+  <!-- Checkmark -->
+  <path d="M 280 512 L 430 662 L 744 348" fill="none" stroke="#00c853" stroke-width="80" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Center dot -->
+  <circle cx="512" cy="512" r="40" fill="url(#accent)"/>
+</svg>

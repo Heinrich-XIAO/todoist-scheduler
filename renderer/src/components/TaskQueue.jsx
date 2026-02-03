@@ -130,7 +130,23 @@ export default function TaskQueue() {
         estimatedMinutes: 0,
         reason: postponeReason.trim() || "postpone",
       });
-      if (!res?.ok && removedTask) {
+      if (res?.ok) {
+        if (res.customPostponed && res.parsedDate) {
+          const dateObj = new Date(res.parsedDate);
+          const formatted = dateObj.toLocaleString([], { 
+            weekday: 'short', 
+            month: 'short', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          });
+          setStatus(`Postponed to ${formatted}`);
+        } else if (res.sleep) {
+          setStatus("Sleep mode enabled");
+        } else {
+          setStatus("Postponed 30 minutes");
+        }
+      } else if (removedTask) {
         setStatus("Failed to postpone task.");
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
