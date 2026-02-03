@@ -1769,6 +1769,10 @@ async function checkAndNotify() {
 
     const isComputer = await classifyComputerTask(task.content || "", task.description || "");
     if (isComputer && !activeOverlays.has(task.id)) {
+      const due = getTaskDate(task);
+      if (due && (due >= sleepTimeFor(due) || due < startTimeFor(due))) {
+        continue;
+      }
       if (overlayWindow) return;
       activeOverlays.add(task.id);
       logUsage("overlay_show", { task_id: task.id, task_name: task.content || "" });
