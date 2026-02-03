@@ -7,11 +7,31 @@ import { Badge } from "./ui/badge.jsx";
 import { Input } from "./ui/input.jsx";
 import { ArrowLeft, Calendar, Check } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
+import { Repeat } from "lucide-react";
 
-function formatDue(iso) {
+function formatTimeDisplay(iso, isOverdue, isToday) {
   if (!iso) return "";
   const date = new Date(iso);
-  return date.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const now = new Date();
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const isSameDay = date.getDate() === todayStart.getDate() &&
+    date.getMonth() === todayStart.getMonth() &&
+    date.getFullYear() === todayStart.getFullYear();
+  
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const timeStr = `${hours}:${minutes}`;
+  
+  if (isSameDay) {
+    return { text: timeStr, colorClass: isOverdue ? "text-red-400" : "text-emerald-400" };
+  }
+  
+  // For non-today, show day name
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dayName = days[date.getDay()];
+  const text = `${dayName} ${timeStr}`;
+  return { text, colorClass: "text-amber-400" };
 }
 
 function priorityDot(priority) {
@@ -227,7 +247,7 @@ export default function TaskQueue() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium flex items-center gap-2 truncate">
-                        <span className={`h-2 w-2 rounded-full ${priorityDot(task.priority)}`} />
+                        <span className={`h-2 w-2 rounded-full shrink-0 ${priorityDot(task.priority)}`} />
                         <span className="truncate">{task.content}</span>
                       </div>
                       {task.description && (
@@ -236,11 +256,17 @@ export default function TaskQueue() {
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {task.id === primaryTaskId && <Badge>Do this next</Badge>}
-                      {task.is_recurring && <Badge variant="secondary">Recurring</Badge>}
-                      <Badge variant="destructive">Overdue</Badge>
-                      <span className="text-xs text-zinc-500">{formatDue(task.due)}</span>
+                     <div className="flex items-center gap-2 shrink-0">
+                       {task.id === primaryTaskId && <Badge>Do this next</Badge>}
+                       {(() => {
+                         const timeDisplay = formatTimeDisplay(task.due, true, false);
+                         return (
+                           <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
+                             {timeDisplay.text}
+                             {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
+                           </span>
+                         );
+                       })()}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -292,7 +318,7 @@ export default function TaskQueue() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium flex items-center gap-2 truncate">
-                        <span className={`h-2 w-2 rounded-full ${priorityDot(task.priority)}`} />
+                        <span className={`h-2 w-2 rounded-full shrink-0 ${priorityDot(task.priority)}`} />
                         <span className="truncate">{task.content}</span>
                       </div>
                       {task.description && (
@@ -301,11 +327,17 @@ export default function TaskQueue() {
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {task.id === primaryTaskId && <Badge>Do this next</Badge>}
-                      {task.is_recurring && <Badge variant="secondary">Recurring</Badge>}
-                      <Badge variant="outline">Due</Badge>
-                      <span className="text-xs text-zinc-500">{formatDue(task.due)}</span>
+                     <div className="flex items-center gap-2 shrink-0">
+                       {task.id === primaryTaskId && <Badge>Do this next</Badge>}
+                       {(() => {
+                         const timeDisplay = formatTimeDisplay(task.due, false, true);
+                         return (
+                           <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
+                             {timeDisplay.text}
+                             {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
+                           </span>
+                         );
+                       })()}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -357,7 +389,7 @@ export default function TaskQueue() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium flex items-center gap-2 truncate">
-                        <span className={`h-2 w-2 rounded-full ${priorityDot(task.priority)}`} />
+                        <span className={`h-2 w-2 rounded-full shrink-0 ${priorityDot(task.priority)}`} />
                         <span className="truncate">{task.content}</span>
                       </div>
                       {task.description && (
@@ -366,11 +398,17 @@ export default function TaskQueue() {
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {task.id === primaryTaskId && <Badge>Do this next</Badge>}
-                      {task.is_recurring && <Badge variant="secondary">Recurring</Badge>}
-                      <Badge variant="outline">Upcoming</Badge>
-                      <span className="text-xs text-zinc-500">{formatDue(task.due)}</span>
+                     <div className="flex items-center gap-2 shrink-0">
+                       {task.id === primaryTaskId && <Badge>Do this next</Badge>}
+                       {(() => {
+                         const timeDisplay = formatTimeDisplay(task.due, false, false);
+                         return (
+                           <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
+                             {timeDisplay.text}
+                             {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
+                           </span>
+                         );
+                       })()}
                       <Button
                         variant="ghost"
                         size="icon"
