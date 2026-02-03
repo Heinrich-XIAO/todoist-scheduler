@@ -19,6 +19,7 @@ const fallback = {
   stopTaskSession: async () => ({ ok: false }),
   snapOverlay: async () => ({ ok: false }),
   getUsageDashboard: async () => ({ ok: false, time: {}, counts: {}, top_tasks: [], recent_events: [] }),
+  getTaskQueue: async () => ({ ok: false, tasks: [] }),
   onOverlayMode: () => {},
 };
 
@@ -45,6 +46,7 @@ const api = {
   stopTaskSession: (payload) => current().stopTaskSession(payload),
   snapOverlay: () => current().snapOverlay(),
   getUsageDashboard: () => current().getUsageDashboard(),
+  getTaskQueue: () => current().getTaskQueue(),
   onOverlayMode: (handler) => current().onOverlayMode(handler),
 };
 

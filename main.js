@@ -1519,10 +1519,14 @@ ipcMain.handle("set-overlay-mode", (_event, mode) => {
 ipcMain.handle("complete-task", async (_event, taskId) => {
   stopSession(taskId, null, overlayMode);
   logUsage("task_complete", { task_id: taskId, mode: overlayMode });
+  let ok = true;
+  let error = null;
   try {
     await todoistFetch(`/tasks/${taskId}/close`, { method: "POST" });
   } catch (err) {
     log(`Complete task failed: ${err}`);
+    ok = false;
+    error = String(err);
   }
   const state = loadOverlayState();
   if (state.active_tasks?.[taskId]) delete state.active_tasks[taskId];
@@ -1530,7 +1534,7 @@ ipcMain.handle("complete-task", async (_event, taskId) => {
   activeOverlays.delete(taskId);
   overlayTask = null;
   if (overlayWindow) overlayWindow.close();
-  return { ok: true };
+  return { ok, error };
 });
 
 ipcMain.handle("snooze-task", (_event, payload) => {
@@ -1653,6 +1657,36 @@ ipcMain.handle("get-scheduler-status", () => {
     notificationCount,
     lastNotificationAt,
   };
+});
+
+ipcMain.handle("get-task-queue", async () => {
+  try {
+    const tasks = await fetchTasks();
+    const queue = tasks
+      .filter((task) => !isTaskCompleted(task))
+      .map((task) => ({
+        id: task.id,
+        content: task.content,
+        description: task.description || "",
+        due: getTaskDate(task),
+        is_recurring: task.due?.is_recurring || false,
+        priority: task.priority,
+        has_due: Boolean(task.due?.date || task.due?.datetime),
+      }))
+      .sort((a, b) => {
+        const aTime = a.due ? a.due.getTime() : Number.POSITIVE_INFINITY;
+        const bTime = b.due ? b.due.getTime() : Number.POSITIVE_INFINITY;
+        return aTime - bTime;
+      })
+      .map((task) => ({
+        ...task,
+        due: task.due ? task.due.toISOString() : null,
+      }));
+    return { ok: true, tasks: queue };
+  } catch (err) {
+    log(`Failed to fetch task queue: ${err}`);
+    return { ok: false, tasks: [] };
+  }
 });
 
 ipcMain.handle("legacy-daemon-status", () => {

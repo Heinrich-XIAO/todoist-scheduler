@@ -15,6 +15,11 @@ const cards = [
     route: "/?page=data",
   },
   {
+    title: "Task Queue",
+    description: "Overdue and due-today tasks in order.",
+    route: "/?page=queue",
+  },
+  {
     title: "Daemon Control",
     description: "Replace legacy daemons and view status.",
     route: "/?page=daemons",
