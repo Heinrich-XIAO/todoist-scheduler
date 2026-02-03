@@ -5,7 +5,7 @@ import { Button } from "./ui/button.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Input } from "./ui/input.jsx";
-import { ArrowLeft, Calendar, Check, ExternalLink } from "./ui/icons.jsx";
+import { ArrowLeft, Calendar, Check } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
 
 function formatDue(iso) {
@@ -244,16 +244,6 @@ export default function TaskQueue() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => api.openTodoistTask(task.id)}
-                        disabled={!api.isAvailable()}
-                        aria-label="Open in Todoist"
-                        title="Open in Todoist"
-                      >
-                        <ExternalLink />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
                         onClick={() => {
                           setPostponeTask(task);
                           setPostponeReason("");
@@ -319,16 +309,6 @@ export default function TaskQueue() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => api.openTodoistTask(task.id)}
-                        disabled={!api.isAvailable()}
-                        aria-label="Open in Todoist"
-                        title="Open in Todoist"
-                      >
-                        <ExternalLink />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
                         onClick={() => {
                           setPostponeTask(task);
                           setPostponeReason("");
@@ -391,16 +371,6 @@ export default function TaskQueue() {
                       {task.is_recurring && <Badge variant="secondary">Recurring</Badge>}
                       <Badge variant="outline">Upcoming</Badge>
                       <span className="text-xs text-zinc-500">{formatDue(task.due)}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => api.openTodoistTask(task.id)}
-                        disabled={!api.isAvailable()}
-                        aria-label="Open in Todoist"
-                        title="Open in Todoist"
-                      >
-                        <ExternalLink />
-                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
