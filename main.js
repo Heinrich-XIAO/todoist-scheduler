@@ -1752,6 +1752,18 @@ async function checkAndNotify() {
     }
 
     const dueDate = getTaskDate(task);
+    if (dueDate && now.getTime() - dueDate.getTime() > 5 * 60 * 60_000) {
+      try {
+        await todoistFetch(`/tasks/${task.id}/close`, { method: "POST" });
+        logUsage("task_auto_complete_overdue", {
+          task_id: task.id,
+          task_name: task.content || "",
+        });
+      } catch (err) {
+        log(`Auto-complete overdue task failed: ${err}`);
+      }
+      continue;
+    }
     if (!dueDate || !isSameDay(dueDate, today)) continue;
 
     const minutesUntil = (dueDate.getTime() - now.getTime()) / 60_000;
@@ -2092,7 +2104,8 @@ ipcMain.handle("get-task-queue", async () => {
           duration_minutes: duration,
         };
       })
-      .filter((task) => Boolean(task.due));
+      .filter((task) => Boolean(task.due))
+      .filter((task) => Date.now() - task.due.getTime() <= 5 * 60 * 60_000);
     const ordered = await orderQueueTasks(queueCandidates);
     const queue = ordered.map((task) => ({
       ...task,
