@@ -2050,9 +2050,12 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
   const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes, reason } = payload;
   stopSession(taskId, elapsedSeconds, mode);
   
-  // Try to parse a date from the reason using AI
+  // STEP 1: First check if the reason is valid/sleep-related
+  const isSleep = await isSleepReason(reason);
+  
+  // STEP 2: Then try to parse a date from the reason using AI
   let customDueDateTime = null;
-  if (reason) {
+  if (reason && !isSleep) {
     customDueDateTime = await parseNaturalLanguageDate(reason);
     if (customDueDateTime) {
       log(`AI parsed date from "${reason}": ${customDueDateTime}`);
@@ -2089,7 +2092,6 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
     mode,
     estimated_minutes: estimatedMinutes || 0,
   });
-  const isSleep = await isSleepReason(reason);
   const state = loadOverlayState();
   state.active_tasks = state.active_tasks || {};
   const snoozeUntil = isSleep ? nextStartTimestamp() : Date.now() + 30 * 60_000;
