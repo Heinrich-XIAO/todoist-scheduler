@@ -5,6 +5,7 @@ import { Button } from "./ui/button.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Input } from "./ui/input.jsx";
+import { PostponeModal } from "./PostponeModal.jsx";
 import { ArrowLeft, Calendar, Check } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
 import { Play, Repeat } from "lucide-react";
@@ -48,6 +49,7 @@ export default function TaskQueue() {
   const [startingId, setStartingId] = useState(null);
   const [postponeTask, setPostponeTask] = useState(null);
   const [postponeReason, setPostponeReason] = useState("");
+  const [postponeWhen, setPostponeWhen] = useState("");
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -57,9 +59,15 @@ export default function TaskQueue() {
 
   const loadQueue = async () => {
     setStatus("");
+    const cached = await api.getTaskQueueCache();
+    if (cached?.ok && cached.tasks?.length) {
+      setTasks(cached.tasks || []);
+    }
     const res = await api.getTaskQueue();
     if (!res?.ok) {
-      setStatus("Failed to load task queue.");
+      if (!cached?.ok) {
+        setStatus("Failed to load task queue.");
+      }
       return;
     }
     setTasks(res.tasks || []);
@@ -119,17 +127,21 @@ export default function TaskQueue() {
       next.splice(removedIndex, 1);
       return next;
     });
+    const combinedReason = postponeWhen.trim()
+      ? `${postponeReason.trim()} (${postponeWhen.trim()})`
+      : postponeReason.trim();
     setPostponeTask(null);
     setPostponeReason("");
+    setPostponeWhen("");
     try {
       const res = await api.postponeTask({
         taskId,
         taskName: postponeTask.content,
         description: postponeTask.description || "",
-        mode: "queue",
+        mode: "corner",
         elapsedSeconds: 0,
         estimatedMinutes: 0,
-        reason: postponeReason.trim() || "postpone",
+        reason: combinedReason || "postpone",
       });
       if (res?.ok) {
         if (res.customPostponed && res.parsedDate) {
@@ -175,13 +187,16 @@ export default function TaskQueue() {
     if (!task?.id) return;
     setStartingId(task.id);
     try {
-      const res = await api.startTaskSession({
+      const res = await api.startQueueTask({
         taskId: task.id,
         taskName: task.content,
+        description: task.description || "",
         mode: "queue",
       });
       if (res?.ok) {
         setStatus(`Started session for "${task.content}"`);
+      } else if (res?.reason === "overlay-active") {
+        setStatus("Overlay already active. Close it before starting another task.");
       } else {
         setStatus("Failed to start task session.");
       }
@@ -310,7 +325,7 @@ export default function TaskQueue() {
                         onClick={() => startTaskSession(task)}
                         disabled={!api.isAvailable() || startingId === task.id}
                         aria-label="Start task"
-                        title="Start task (no overlay)"
+                        title="Start task"
                       >
                         <Play className="h-4 w-4" />
                       </Button>
@@ -320,6 +335,7 @@ export default function TaskQueue() {
                         onClick={() => {
                           setPostponeTask(task);
                           setPostponeReason("");
+                          setPostponeWhen("");
                         }}
                         disabled={!api.isAvailable()}
                         aria-label="Postpone task"
@@ -390,7 +406,7 @@ export default function TaskQueue() {
                         onClick={() => startTaskSession(task)}
                         disabled={!api.isAvailable() || startingId === task.id}
                         aria-label="Start task"
-                        title="Start task (no overlay)"
+                        title="Start task"
                       >
                         <Play className="h-4 w-4" />
                       </Button>
@@ -400,6 +416,7 @@ export default function TaskQueue() {
                         onClick={() => {
                           setPostponeTask(task);
                           setPostponeReason("");
+                          setPostponeWhen("");
                         }}
                         disabled={!api.isAvailable()}
                         aria-label="Postpone task"
@@ -470,7 +487,7 @@ export default function TaskQueue() {
                         onClick={() => startTaskSession(task)}
                         disabled={!api.isAvailable() || startingId === task.id}
                         aria-label="Start task"
-                        title="Start task (no overlay)"
+                        title="Start task"
                       >
                         <Play className="h-4 w-4" />
                       </Button>
@@ -480,6 +497,7 @@ export default function TaskQueue() {
                         onClick={() => {
                           setPostponeTask(task);
                           setPostponeReason("");
+                          setPostponeWhen("");
                         }}
                         disabled={!api.isAvailable()}
                         aria-label="Postpone task"
@@ -506,38 +524,24 @@ export default function TaskQueue() {
 
         </div>
 
-        {postponeTask && (
-          <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-            <Card className="w-[520px]">
-              <CardHeader>
-                <CardTitle>Why are you postponing?</CardTitle>
-                <CardDescription>{postponeTask.content}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Input
-                  value={postponeReason}
-                  onChange={(e) => setPostponeReason(e.target.value)}
-                  placeholder="Type your reason"
-                  className="mb-4"
-                />
-                <div className="flex justify-end gap-3">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setPostponeTask(null);
-                      setPostponeReason("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button onClick={submitPostpone} disabled={!postponeReason.trim()}>
-                    Postpone
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        <PostponeModal
+          open={Boolean(postponeTask)}
+          title="Postpone Task"
+          description={postponeTask?.content}
+          reason={postponeReason}
+          onReasonChange={setPostponeReason}
+          when={postponeWhen}
+          onWhenChange={setPostponeWhen}
+          showWhen
+          onCancel={() => {
+            setPostponeTask(null);
+            setPostponeReason("");
+            setPostponeWhen("");
+          }}
+          onSubmit={submitPostpone}
+          submitLabel="Postpone"
+          disabled={!postponeReason.trim()}
+        />
       </div>
     </div>
   );

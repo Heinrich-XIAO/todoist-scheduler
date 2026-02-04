@@ -82,7 +82,7 @@ export default function QuickStart() {
                 Cancel
               </Button>
               <Button type="submit" disabled={!api.isAvailable() || submitting || !taskName.trim()}>
-                {submitting ? "Starting..." : "Estimate & Start"}
+                {submitting ? "Starting..." : "Start"}
               </Button>
             </div>
           </form>

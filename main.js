@@ -23,6 +23,9 @@ const repoRoot = path.resolve(__dirname);
 
 dotenv.config({ path: path.join(repoRoot, ".env.local") });
 
+const APP_NAME = "Todoist Scheduler";
+app.setName(APP_NAME);
+
 // Disable network service sandbox to prevent crashes
 app.commandLine.appendSwitch("disable-features", "NetworkService,NetworkServiceSandbox");
 app.commandLine.appendSwitch("disable-gpu-sandbox");
@@ -399,6 +402,7 @@ function createQuickWindow() {
     maximizable: false,
     minimizable: false,
     alwaysOnTop: true,
+    frame: false,
     backgroundColor: "#0b0b0b",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -429,6 +433,17 @@ function createOverlayWindow() {
   overlayWindow.setMenuBarVisibility(false);
   // Keep the overlay visible across macOS Spaces/desktops.
   overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  overlayWindow.on("show", () => log("Overlay window show"));
+  overlayWindow.on("hide", () => log("Overlay window hide"));
+  overlayWindow.on("close", () => log("Overlay window close"));
+  overlayWindow.on("closed", () => log("Overlay window closed"));
+  overlayWindow.on("unresponsive", () => log("Overlay window unresponsive"));
+  overlayWindow.webContents.on("render-process-gone", (_event, details) => {
+    log(`Overlay render process gone: ${details?.reason || "unknown"}`);
+  });
+  overlayWindow.webContents.on("did-fail-load", (_event, code, desc, url) => {
+    log(`Overlay did-fail-load (${code}): ${desc} ${url || ""}`.trim());
+  });
   overlayWindow.loadURL(`${getAppUrl()}?page=overlay`);
   overlayWindow.on("closed", () => {
     overlayWindow = null;
@@ -494,6 +509,41 @@ function createTray() {
 function ensureOverlayWindow() {
   if (!overlayWindow) {
     createOverlayWindow();
+  }
+}
+
+function isOverlayWindowActive() {
+  if (!overlayWindow) return false;
+  if (overlayWindow.isDestroyed()) return false;
+  if (!overlayWindow.isVisible()) return false;
+  if (overlayWindow.isMinimized()) return false;
+  return true;
+}
+
+function resetOverlay(reason) {
+  if (reason) log(`Overlay reset: ${reason}`);
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.close();
+  }
+  overlayWindow = null;
+  overlayTask = null;
+  overlayMode = "full";
+}
+
+function describeOverlayWindow() {
+  if (!overlayWindow) return "none";
+  try {
+    const bounds = overlayWindow.getBounds();
+    return JSON.stringify({
+      visible: overlayWindow.isVisible(),
+      minimized: overlayWindow.isMinimized(),
+      focused: overlayWindow.isFocused(),
+      destroyed: overlayWindow.isDestroyed(),
+      fullscreen: overlayWindow.isFullScreen(),
+      bounds,
+    });
+  } catch (err) {
+    return "unknown";
   }
 }
 
@@ -616,6 +666,10 @@ function timeStatsPath() {
   return path.join(DATA_DIR, "task_time.json");
 }
 
+function queueCachePath() {
+  return path.join(DATA_DIR, "task_queue_cache.json");
+}
+
 function schedulerStatusPath() {
   return path.join(DATA_DIR, "scheduler_status.json");
 }
@@ -658,6 +712,17 @@ function loadTimeStats() {
 
 function saveTimeStats(stats) {
   writeJson(timeStatsPath(), stats);
+}
+
+function loadQueueCache() {
+  return readJson(queueCachePath(), { updatedAt: null, tasks: [] });
+}
+
+function saveQueueCache(tasks) {
+  writeJson(queueCachePath(), {
+    updatedAt: new Date().toISOString(),
+    tasks,
+  });
 }
 
 function loadSchedulerStatus() {
@@ -1065,7 +1130,7 @@ async function estimatePriority(task, description) {
     `Description: ${description}\n\n` +
     "Decide if this task is urgent or time-sensitive. Reply with ONLY one number: 4 for urgent, 2 for normal.";
   const content = await openrouterChat(
-    "You assign Todoist priorities. Reply only with 4 or 2.",
+    "You assign Todoist priorities. Prioritize school projects. Reply only with 4 or 2.",
     prompt,
     6
   );
@@ -1339,6 +1404,13 @@ async function orderQueueTasks(tasks) {
   };
 
   return [...sortGroup(overdue), ...sortGroup(today), ...sortGroup(upcoming)];
+}
+
+function serializeQueueTasks(tasks) {
+  return tasks.map((task) => ({
+    ...task,
+    due: task.due ? task.due.toISOString() : null,
+  }));
 }
 
 function normalizeDay(day) {
@@ -1949,6 +2021,7 @@ async function checkQueueSuggestion() {
   const queueCandidates = buildQueueCandidates(tasks);
   if (queueCandidates.length === 0) return;
   const ordered = await orderQueueTasks(queueCandidates);
+  saveQueueCache(serializeQueueTasks(ordered));
   const nextTask = ordered[0];
   if (!nextTask) return;
   if (overlayWindow || overlayTask) return;
@@ -2145,6 +2218,37 @@ ipcMain.handle("snooze-task", (_event, payload) => {
   return { ok: true, snoozeCount };
 });
 
+ipcMain.handle("defer-task", (_event, payload) => {
+  const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes } = payload;
+  stopSession(taskId, elapsedSeconds, mode);
+  logUsage("task_defer", {
+    task_id: taskId,
+    task_name: taskName || "",
+    mode,
+    estimated_minutes: estimatedMinutes || 0,
+  });
+  const state = loadOverlayState();
+  state.active_tasks = state.active_tasks || {};
+  const prev = state.active_tasks[taskId] || {};
+  const snoozeCount = prev.snooze_count || 0;
+  state.active_tasks[taskId] = {
+    task_name: taskName,
+    description,
+    elapsed_seconds: elapsedSeconds,
+    mode,
+    last_updated: Date.now(),
+    estimated_duration: estimatedMinutes,
+    snooze_count: snoozeCount,
+    snooze_until: Date.now() + 5 * 60_000,
+    snoozed: true,
+  };
+  saveOverlayState(state);
+  activeOverlays.delete(taskId);
+  overlayTask = null;
+  if (overlayWindow) overlayWindow.close();
+  return { ok: true, snoozeCount };
+});
+
 ipcMain.handle("postpone-task", async (_event, payload) => {
   const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes, reason } = payload;
   stopSession(taskId, elapsedSeconds, mode);
@@ -2284,20 +2388,77 @@ ipcMain.handle("open-task-in-todoist", (_event, taskId) => {
   return { ok: true };
 });
 
+ipcMain.handle("start-queue-task", async (_event, payload) => {
+  try {
+    const taskId = payload?.taskId;
+    const taskName = payload?.taskName?.trim();
+    const description = payload?.description?.trim() || "";
+    const requestedMode = payload?.mode || "corner";
+    if (!taskId || !taskName) {
+      log("start-queue-task: missing task id or name");
+      return { ok: false, reason: "missing-task" };
+    }
+    if ((overlayWindow && !isOverlayWindowActive()) || (overlayTask && !isOverlayWindowActive())) {
+      resetOverlay("stale overlay state");
+    } else if (overlayWindow && !overlayTask) {
+      resetOverlay("overlay window without task");
+    }
+    if (overlayWindow || overlayTask) {
+      if (overlayTask?.id !== taskId) {
+        log(
+          `start-queue-task: overlay active for another task (current=${overlayTask?.id || "none"} requested=${taskId}) window=${describeOverlayWindow()}`
+        );
+        return { ok: false, reason: "overlay-active" };
+      }
+    }
+    let estimateMinutes = null;
+    if (Number.isFinite(payload?.estimatedMinutes)) {
+      estimateMinutes = Number(payload.estimatedMinutes);
+    }
+    if (!estimateMinutes || estimateMinutes <= 0) {
+      const estimate = await estimateDuration(taskName, description);
+      estimateMinutes = estimate.minutes || 30;
+    }
+    overlayTask = {
+      id: taskId,
+      content: taskName,
+      description,
+      estimatedMinutes: estimateMinutes,
+      snoozeCount: 0,
+      autoStart: true,
+    };
+    overlayMode = requestedMode;
+    ensureOverlayWindow();
+    setOverlayMode(overlayMode);
+    startSession(taskId, taskName, overlayMode);
+    logUsage("queue_task_start", { task_id: taskId, task_name: taskName, mode: overlayMode });
+    return { ok: true };
+  } catch (err) {
+    log(`start-queue-task failed: ${err}`);
+    return { ok: false, reason: "error", error: String(err) };
+  }
+});
+
 ipcMain.handle("get-task-queue", async () => {
   try {
     const tasks = await fetchTasks();
     const queueCandidates = buildQueueCandidates(tasks);
     const ordered = await orderQueueTasks(queueCandidates);
-    const queue = ordered.map((task) => ({
-      ...task,
-      due: task.due ? task.due.toISOString() : null,
-    }));
+    const queue = serializeQueueTasks(ordered);
+    saveQueueCache(queue);
     return { ok: true, tasks: queue };
   } catch (err) {
     log(`Failed to fetch task queue: ${err}`);
     return { ok: false, tasks: [] };
   }
+});
+
+ipcMain.handle("get-task-queue-cache", () => {
+  const cache = loadQueueCache();
+  if (!cache?.tasks?.length) {
+    return { ok: false, tasks: [], cachedAt: cache?.updatedAt || null };
+  }
+  return { ok: true, tasks: cache.tasks, cachedAt: cache.updatedAt };
 });
 
 ipcMain.handle("legacy-daemon-status", () => {

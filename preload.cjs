@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("todoist", {
   setOverlayMode: (mode) => ipcRenderer.invoke("set-overlay-mode", mode),
   completeTask: (taskId) => ipcRenderer.invoke("complete-task", taskId),
   snoozeTask: (payload) => ipcRenderer.invoke("snooze-task", payload),
+  deferTask: (payload) => ipcRenderer.invoke("defer-task", payload),
   postponeTask: (payload) => ipcRenderer.invoke("postpone-task", payload),
   checkJustification: (payload) => ipcRenderer.invoke("check-justification", payload),
   runSchedulerNow: () => ipcRenderer.invoke("run-scheduler-now"),
@@ -20,8 +21,10 @@ contextBridge.exposeInMainWorld("todoist", {
   stopTaskSession: (payload) => ipcRenderer.invoke("stop-task-session", payload),
   snapOverlay: () => ipcRenderer.invoke("snap-overlay"),
   getUsageDashboard: () => ipcRenderer.invoke("get-usage-dashboard"),
+  getTaskQueueCache: () => ipcRenderer.invoke("get-task-queue-cache"),
   getTaskQueue: () => ipcRenderer.invoke("get-task-queue"),
   openTodoistTask: (taskId) => ipcRenderer.invoke("open-task-in-todoist", taskId),
+  startQueueTask: (payload) => ipcRenderer.invoke("start-queue-task", payload),
   startQuickTask: (payload) => ipcRenderer.invoke("start-quick-task", payload),
   closeQuickWindow: () => ipcRenderer.invoke("close-quick-window"),
   onOverlayMode: (handler) =>

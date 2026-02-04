@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../bridge.js";
 import { Button } from "./ui/button.jsx";
-import { Input } from "./ui/input.jsx";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.jsx";
-import { ArrowDownRight, Calendar, Clock, X } from "./ui/icons.jsx";
+import { ArrowDownRight, Calendar, Clock } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
+import { PostponeModal } from "./PostponeModal.jsx";
 
 function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -27,12 +26,8 @@ export default function Overlay() {
   const [snoozeCount, setSnoozeCount] = useState(0);
   const [postponeOpen, setPostponeOpen] = useState(false);
   const [justificationOpen, setJustificationOpen] = useState(false);
-  const [customTaskOpen, setCustomTaskOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [postponeWhen, setPostponeWhen] = useState("");
-  const [customTaskName, setCustomTaskName] = useState("");
-  const [customTaskMinutes, setCustomTaskMinutes] = useState("");
-  const [customTaskError, setCustomTaskError] = useState("");
   const [status, setStatus] = useState("");
   const [sessionStarted, setSessionStarted] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -45,6 +40,10 @@ export default function Overlay() {
       setTask(data.task);
       setMode(data.mode || "full");
       setSnoozeCount(data.task?.snoozeCount || 0);
+      if (data.task?.autoStart) {
+        setTimerStarted(true);
+        setSessionStarted(true);
+      }
     });
     const handler = (next) => setMode(next);
     api.onOverlayMode(handler);
@@ -138,6 +137,17 @@ export default function Overlay() {
     setReason("");
   };
 
+  const resetPostponeModal = () => {
+    setPostponeOpen(false);
+    setReason("");
+    setPostponeWhen("");
+  };
+
+  const resetJustificationModal = () => {
+    setJustificationOpen(false);
+    setReason("");
+  };
+
   const submitPostpone = async () => {
     if (!reason.trim()) return;
     if (sessionStarted) {
@@ -179,47 +189,27 @@ export default function Overlay() {
     } else {
       setStatus("Postponed 30 minutes - next task queued");
     }
-    setPostponeOpen(false);
-    setReason("");
-    setPostponeWhen("");
+    resetPostponeModal();
   };
 
-  const submitCustomTask = async () => {
-    const name = customTaskName.trim();
-    if (!name) {
-      setCustomTaskError("Please enter a task name.");
-      return;
-    }
-    let minutes = null;
-    const minutesRaw = customTaskMinutes.trim();
-    if (minutesRaw) {
-      const parsed = Number(minutesRaw);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        setCustomTaskError("Enter a positive number of minutes or leave blank.");
-        return;
-      }
-      minutes = parsed;
-    }
-    setCustomTaskError("");
-    const res = await api.startQuickTask({
-      taskName: name,
-      estimatedMinutes: minutes ?? undefined,
-      replaceTaskId: task?.id,
-    });
-    if (res?.ok) {
-      const next = await api.getOverlayTask();
-      setTask(next.task);
-      setMode(next.mode || "full");
-      setSnoozeCount(next.task?.snoozeCount || 0);
-      setTimerStarted(false);
-      setElapsed(0);
+  const onStartDifferentTask = async () => {
+    if (!task) return;
+    if (sessionStarted) {
+      await api.stopTaskSession({
+        taskId: task.id,
+        elapsedSeconds: elapsed,
+        mode,
+      });
       setSessionStarted(false);
-      setCustomTaskOpen(false);
-      setCustomTaskName("");
-      setCustomTaskMinutes("");
-    } else {
-      setCustomTaskError("Could not start that task.");
     }
+    await api.deferTask({
+      taskId: task.id,
+      taskName: task.content,
+      description: task.description,
+      mode,
+      elapsedSeconds: elapsed,
+      estimatedMinutes: task.estimatedMinutes || 30,
+    });
   };
 
   if (!task) {
@@ -353,10 +343,7 @@ export default function Overlay() {
                 </Button>
               <Button
                 variant="secondary"
-                onClick={() => {
-                  setCustomTaskOpen(true);
-                  setCustomTaskError("");
-                }}
+                onClick={onStartDifferentTask}
               >
                 Start Different Task
               </Button>
@@ -441,122 +428,31 @@ export default function Overlay() {
         </div>
       )}
 
-      {(postponeOpen || justificationOpen) && (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-[520px] bg-zinc-900 border border-zinc-700 rounded-xl p-6">
-            <h3 className="text-lg font-semibold mb-2">
-              {justificationOpen ? "Why do you need another snooze?" : "Postpone Task"}
-            </h3>
-            
-            {justificationOpen ? (
-              <>
-                <p className="text-sm text-zinc-400 mb-4">
-                  Be specific. The assistant will decide.
-                </p>
-                <div className="mb-4">
-                  <label className="text-sm text-zinc-300 mb-2 block">Reason:</label>
-                  <Input
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder="Explain why you need to snooze again"
-                    className="w-full"
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="mb-4">
-                  <label className="text-sm text-zinc-300 mb-2 block">Reason:</label>
-                  <Input
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder="Why are you postponing?"
-                    className="w-full"
-                  />
-                </div>
-                <div className="mb-4">
-                  <label className="text-sm text-zinc-300 mb-2 block">Postpone to:</label>
-                  <Input
-                    value={postponeWhen}
-                    onChange={(e) => setPostponeWhen(e.target.value)}
-                    placeholder="tomorrow, next Monday, in 2 hours, sleep, etc."
-                    className="w-full"
-                  />
-                  <p className="text-xs text-zinc-500 mt-1">
-                    AI will parse this and extract the date/time
-                  </p>
-                </div>
-              </>
-            )}
-            
-            <div className="flex justify-end gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setPostponeOpen(false);
-                  setJustificationOpen(false);
-                  setReason("");
-                  setPostponeWhen("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button 
-                onClick={justificationOpen ? submitJustification : submitPostpone}
-                disabled={!reason.trim()}
-              >
-                Submit
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PostponeModal
+        open={postponeOpen}
+        title="Postpone Task"
+        reason={reason}
+        onReasonChange={setReason}
+        when={postponeWhen}
+        onWhenChange={setPostponeWhen}
+        showWhen
+        onCancel={resetPostponeModal}
+        onSubmit={submitPostpone}
+        disabled={!reason.trim()}
+      />
+      <PostponeModal
+        open={justificationOpen}
+        title="Why do you need another snooze?"
+        description="Be specific. The assistant will decide."
+        reason={reason}
+        onReasonChange={setReason}
+        showWhen={false}
+        reasonPlaceholder="Explain why you need to snooze again"
+        onCancel={resetJustificationModal}
+        onSubmit={submitJustification}
+        disabled={!reason.trim()}
+      />
 
-      {customTaskOpen && (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-[520px] bg-zinc-900 border border-zinc-700 rounded-xl p-6">
-            <h3 className="text-lg font-semibold mb-2">Start a different task</h3>
-            <p className="text-sm text-zinc-400 mb-4">
-              Enter a task name and optional time estimate. Leave time blank to autogenerate.
-            </p>
-            <div className="mb-4">
-              <label className="text-sm text-zinc-300 mb-2 block">Task name:</label>
-              <Input
-                value={customTaskName}
-                onChange={(e) => setCustomTaskName(e.target.value)}
-                placeholder="Write weekly update"
-                className="w-full"
-              />
-            </div>
-            <div className="mb-4">
-              <label className="text-sm text-zinc-300 mb-2 block">Estimated minutes (optional):</label>
-              <Input
-                value={customTaskMinutes}
-                onChange={(e) => setCustomTaskMinutes(e.target.value)}
-                placeholder="30"
-                className="w-full"
-              />
-            </div>
-            {customTaskError && <div className="text-sm text-amber mb-3">{customTaskError}</div>}
-            <div className="flex justify-end gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setCustomTaskOpen(false);
-                  setCustomTaskName("");
-                  setCustomTaskMinutes("");
-                  setCustomTaskError("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button onClick={submitCustomTask} disabled={!customTaskName.trim()}>
-                Start
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
