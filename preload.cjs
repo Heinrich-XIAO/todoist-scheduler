@@ -139,6 +139,8 @@ if (isE2E) {
     startQueueTask: async () => ({ ok: true }),
     startQuickTask: async () => ({ ok: true }),
     closeQuickWindow: async () => ({ ok: true }),
+    setOverlayPosition: async () => ({ ok: true }),
+    moveOverlayBy: async () => ({ ok: true }),
     onOverlayMode: (handler) => {
       overlayHandler = handler;
     },
@@ -171,6 +173,11 @@ if (isE2E) {
     startQueueTask: (payload) => ipcRenderer.invoke("start-queue-task", payload),
     startQuickTask: (payload) => ipcRenderer.invoke("start-quick-task", payload),
     closeQuickWindow: () => ipcRenderer.invoke("close-quick-window"),
+    setOverlayPosition: (payload) => ipcRenderer.invoke("overlay-set-position", payload),
+    moveOverlayBy: (payload) => {
+      console.log("[Overlay][drag] ipc invoke overlay-move-by", payload);
+      return ipcRenderer.invoke("overlay-move-by", payload);
+    },
     onOverlayMode: (handler) =>
       ipcRenderer.on("overlay-mode", (_event, mode) => handler(mode)),
   });

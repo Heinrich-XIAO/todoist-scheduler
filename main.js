@@ -322,6 +322,13 @@ function enableAutostart() {
 function disableAutostart() {
   const plistPath = electronLaunchAgentPath();
   runLaunchctl(["bootout", `gui/${process.getuid()}`, plistPath]);
+  try {
+    if (fs.existsSync(plistPath)) {
+      fs.unlinkSync(plistPath);
+    }
+  } catch (err) {
+    log(`Failed to remove autostart plist: ${err}`);
+  }
 }
 
 function autostartStatus() {
@@ -1406,37 +1413,49 @@ function splitByDay(tasks) {
   return { overdue, today: todayTasks, upcoming };
 }
 
-function buildQueueCandidates(tasks) {
-  return tasks
-    .filter((task) => !isTaskCompleted(task))
-    .filter((task) => task.due?.date || task.due?.datetime)
-    .map((task) => {
-      let due = getTaskDate(task);
-      if (due && Number.isNaN(due.getTime())) {
-        log(
-          `buildQueueCandidates: invalid due for taskId=${task.id} due=${JSON.stringify(task.due)}`
-        );
-        due = null;
-      }
-      if (due && isDateOnly(task)) {
-        due = new Date(due.getFullYear(), due.getMonth(), due.getDate(), 23, 59, 59);
-      }
-      const duration = parseDuration(task.description || "");
-      return {
-        id: task.id,
-        content: task.content,
-        description: task.description || "",
-        due,
-        is_recurring: task.due?.is_recurring || false,
-        priority: task.priority,
-        duration_minutes: duration,
-      };
-    })
-    .filter((task) => Boolean(task.due));
+function buildQueueCandidates(tasks, options = {}) {
+  const { debug = false, context = "unknown" } = options;
+  const total = tasks.length;
+  const incomplete = tasks.filter((task) => !isTaskCompleted(task));
+  const withDue = incomplete.filter((task) => task.due?.date || task.due?.datetime);
+  const mapped = withDue.map((task) => {
+    let due = getTaskDate(task);
+    if (due && Number.isNaN(due.getTime())) {
+      log(
+        `buildQueueCandidates: invalid due for taskId=${task.id} due=${JSON.stringify(task.due)}`
+      );
+      due = null;
+    }
+    if (due && isDateOnly(task)) {
+      due = new Date(due.getFullYear(), due.getMonth(), due.getDate(), 23, 59, 59);
+    }
+    const duration = parseDuration(task.description || "");
+    return {
+      id: task.id,
+      content: task.content,
+      description: task.description || "",
+      due,
+      is_recurring: task.due?.is_recurring || false,
+      priority: task.priority,
+      duration_minutes: duration,
+    };
+  });
+  const valid = mapped.filter((task) => Boolean(task.due));
+  if (debug) {
+    const sample = valid.slice(0, 5).map((task) => ({
+      id: task.id,
+      due: task.due ? task.due.toISOString() : null,
+    }));
+    log(
+      `queue_debug(${context}): total=${total} incomplete=${incomplete.length} with_due=${withDue.length} valid_due=${valid.length} sample=${JSON.stringify(sample)}`
+    );
+  }
+  return valid;
 }
 
-async function orderQueueTasks(tasks) {
+async function orderQueueTasks(tasks, options = {}) {
   if (tasks.length === 0) return [];
+  const { debug = false, context = "unknown" } = options;
   const aiOrder = await aiOrderQueue(tasks);
   const rankMap = new Map();
   if (aiOrder) {
@@ -1467,7 +1486,13 @@ async function orderQueueTasks(tasks) {
     return [...fixedFallback, ...variableFallback];
   };
 
-  return [...sortGroup(overdue), ...sortGroup(today), ...sortGroup(upcoming)];
+  const ordered = [...sortGroup(overdue), ...sortGroup(today), ...sortGroup(upcoming)];
+  if (debug) {
+    log(
+      `queue_debug(${context}): order_source=${orderSource} overdue=${overdue.length} today=${today.length} upcoming=${upcoming.length} ordered=${ordered.length}`
+    );
+  }
+  return ordered;
 }
 
 function serializeQueueTasks(tasks) {
@@ -2440,6 +2465,41 @@ ipcMain.handle("snap-overlay", () => {
   return { ok: true };
 });
 
+ipcMain.handle("overlay-set-position", (_event, payload) => {
+  if (!overlayWindow || overlayMode !== "corner") return { ok: false };
+  const x = Number(payload?.x);
+  const y = Number(payload?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return { ok: false };
+  log(`overlay-set-position: x=${x} y=${y} bounds=${JSON.stringify(overlayWindow.getBounds())}`);
+  overlayWindow.setPosition(Math.round(x), Math.round(y), false);
+  log(`overlay-set-position: done bounds=${JSON.stringify(overlayWindow.getBounds())}`);
+  return { ok: true };
+});
+
+ipcMain.handle("overlay-move-by", (_event, payload) => {
+  if (!overlayWindow || overlayMode !== "corner") {
+    log(`overlay-move-by: ignored overlayWindow=${Boolean(overlayWindow)} mode=${overlayMode}`);
+    return { ok: false };
+  }
+  const dx = Number(payload?.dx);
+  const dy = Number(payload?.dy);
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+    log(`overlay-move-by: invalid payload=${JSON.stringify(payload)}`);
+    return { ok: false };
+  }
+  const bounds = overlayWindow.getBounds();
+  log(
+    `overlay-move-by: dx=${dx} dy=${dy} bounds=${JSON.stringify(bounds)} visible=${overlayWindow.isVisible()} focused=${overlayWindow.isFocused()}`
+  );
+  overlayWindow.setPosition(
+    Math.round(bounds.x + dx),
+    Math.round(bounds.y + dy),
+    false
+  );
+  log(`overlay-move-by: done bounds=${JSON.stringify(overlayWindow.getBounds())}`);
+  return { ok: true };
+});
+
 ipcMain.handle("check-justification", async (_event, payload) => {
   const { taskName, description, justification } = payload;
   return checkJustification(taskName, description, justification);
@@ -2536,10 +2596,12 @@ ipcMain.handle("start-queue-task", async (_event, payload) => {
 ipcMain.handle("get-task-queue", async () => {
   try {
     const tasks = await fetchTasks();
-    const queueCandidates = buildQueueCandidates(tasks);
-    const ordered = await orderQueueTasks(queueCandidates);
+    log(`queue_debug(ipc): fetched_tasks=${tasks.length}`);
+    const queueCandidates = buildQueueCandidates(tasks, { debug: true, context: "ipc" });
+    const ordered = await orderQueueTasks(queueCandidates, { debug: true, context: "ipc" });
     const queue = serializeQueueTasks(ordered);
     saveQueueCache(queue);
+    log(`queue_debug(ipc): serialized=${queue.length}`);
     return { ok: true, tasks: queue };
   } catch (err) {
     log(`Failed to fetch task queue: ${err}`);
@@ -2580,10 +2642,7 @@ ipcMain.handle("autostart-disable", () => {
 app.whenReady().then(() => {
   if (!IS_E2E) {
     stopLegacyDaemon();
-    // Only enable autostart in production, not in development
-    if (app.isPackaged) {
-      enableAutostart();
-    }
+    // Respect the user's autostart toggle; don't auto-enable on launch.
   }
   createMainWindow();
   if (!IS_E2E) {

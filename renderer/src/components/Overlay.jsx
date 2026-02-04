@@ -38,7 +38,8 @@ export default function Overlay() {
     api.getOverlayTask().then((data) => {
       if (!mounted) return;
       setTask(data.task);
-      setMode(data.mode || "full");
+      const nextMode = data.mode || "full";
+      setMode(nextMode);
       setSnoozeCount(data.task?.snoozeCount || 0);
       const serverElapsed = Number.isFinite(data.elapsedSeconds) ? data.elapsedSeconds : 0;
       if (data.sessionActive || data.task?.autoStart) {
@@ -47,6 +48,10 @@ export default function Overlay() {
         setElapsed(serverElapsed);
       } else if (serverElapsed > 0) {
         setElapsed(serverElapsed);
+      }
+      if (nextMode === "corner" && !data.sessionActive && !data.task?.autoStart) {
+        setMode("full");
+        api.setOverlayMode("full");
       }
     });
     const handler = (next) => setMode(next);
@@ -69,6 +74,10 @@ export default function Overlay() {
         setTimerStarted(true);
         setSessionStarted(true);
       }
+      if ((data.mode || "full") === "corner" && !data.sessionActive && !data.task?.autoStart) {
+        setMode("full");
+        api.setOverlayMode("full");
+      }
     };
     sync();
     const id = setInterval(sync, 5000);
@@ -85,17 +94,41 @@ export default function Overlay() {
   }, [timerStarted]);
 
   useEffect(() => {
-    if (mode !== "corner") setDragging(false);
+    if (mode !== "corner") {
+      setDragging(false);
+    }
   }, [mode]);
 
   useEffect(() => {
     const onMouseUp = async () => {
       if (!dragging) return;
+      console.log("[Overlay][drag] mouseup");
       setDragging(false);
       if (mode === "corner") await api.snapOverlay();
     };
     window.addEventListener("mouseup", onMouseUp);
     return () => window.removeEventListener("mouseup", onMouseUp);
+  }, [dragging, mode]);
+
+  useEffect(() => {
+    if (!dragging || mode !== "corner") return undefined;
+    let raf = null;
+    const onMouseMove = (event) => {
+      if (raf) return;
+      const dx = event.movementX;
+      const dy = event.movementY;
+      if (!dx && !dy) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        console.log("[Overlay][drag] move", { dx, dy, movementX: event.movementX, movementY: event.movementY });
+        api.moveOverlayBy({ dx, dy });
+      });
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("mousemove", onMouseMove);
+    };
   }, [dragging, mode]);
 
   const progress = useMemo(() => {
@@ -268,6 +301,14 @@ export default function Overlay() {
         if (mode !== "corner") return;
         const target = event.target;
         if (target?.closest?.("button, input, textarea")) return;
+        event.preventDefault();
+        console.log("[Overlay][drag] mousedown", {
+          clientX: event.clientX,
+          clientY: event.clientY,
+          screenX: event.screenX,
+          screenY: event.screenY,
+          buttons: event.buttons,
+        });
         setDragging(true);
       }}
     >
@@ -283,7 +324,6 @@ export default function Overlay() {
           <div 
             className={`h-full w-full border border-zinc-700 rounded-2xl relative z-10`}
           >
-            <div className="overlay-drag-handle" />
             <div
               className={`overlay-corner-content flex items-center px-4 ${
                 isHovered ? "" : ""

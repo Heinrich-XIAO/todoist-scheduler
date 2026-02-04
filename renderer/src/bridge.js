@@ -19,6 +19,8 @@ const fallback = {
   startTaskSession: async () => ({ ok: false }),
   stopTaskSession: async () => ({ ok: false }),
   snapOverlay: async () => ({ ok: false }),
+  setOverlayPosition: async () => ({ ok: false }),
+  moveOverlayBy: async () => ({ ok: false }),
   getUsageDashboard: async () => ({ ok: false, time: {}, counts: {}, top_tasks: [], recent_events: [] }),
   getTaskQueueCache: async () => ({ ok: false, tasks: [], cachedAt: null }),
   getTaskQueue: async () => ({ ok: false, tasks: [] }),
@@ -52,6 +54,16 @@ const api = {
   startTaskSession: (payload) => current().startTaskSession(payload),
   stopTaskSession: (payload) => current().stopTaskSession(payload),
   snapOverlay: () => current().snapOverlay(),
+  setOverlayPosition: (payload) => current().setOverlayPosition(payload),
+  moveOverlayBy: (payload) => {
+    console.log("[Overlay][drag] moveOverlayBy", payload);
+    const fn = current().moveOverlayBy;
+    if (typeof fn !== "function") {
+      console.log("[Overlay][drag] moveOverlayBy missing on bridge");
+      return { ok: false, reason: "missing-bridge" };
+    }
+    return fn(payload);
+  },
   getUsageDashboard: () => current().getUsageDashboard(),
   getTaskQueueCache: () => current().getTaskQueueCache(),
   getTaskQueue: () => current().getTaskQueue(),
