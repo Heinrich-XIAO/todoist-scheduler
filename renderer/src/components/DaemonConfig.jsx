@@ -6,11 +6,12 @@ import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Switch } from "./ui/switch.jsx";
 import { ArrowLeft } from "./ui/icons.jsx";
+import { useToast } from "./ui/toast.jsx";
 
 export default function DaemonConfig() {
   const [status, setStatus] = useState({ pids: [] });
-  const [message, setMessage] = useState("");
   const [autostart, setAutostart] = useState(false);
+  const { addToast } = useToast();
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -34,7 +35,10 @@ export default function DaemonConfig() {
   const stopLegacy = async () => {
     const res = await api.stopLegacyDaemon();
     setStatus(res);
-    setMessage("Legacy daemon stopped.");
+    addToast({
+      title: "Legacy daemon stopped.",
+      variant: "success",
+    });
   };
 
   const toggleAutostart = async (enabled) => {
@@ -95,7 +99,6 @@ export default function DaemonConfig() {
                 Stop legacy daemon
               </Button>
             </div>
-            {message && <p className="text-sm text-amber mt-4">{message}</p>}
           </CardContent>
         </Card>
 

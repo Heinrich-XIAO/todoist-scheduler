@@ -9,6 +9,7 @@ import { PostponeModal } from "./PostponeModal.jsx";
 import { ArrowLeft, Calendar, Check } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
 import { Play, Repeat } from "lucide-react";
+import { useToast } from "./ui/toast.jsx";
 
 function formatTimeDisplay(iso, isOverdue, isToday) {
   if (!iso) return "";
@@ -44,12 +45,12 @@ function priorityDot(priority) {
 
 export default function TaskQueue() {
   const [tasks, setTasks] = useState([]);
-  const [status, setStatus] = useState("");
   const [completingId, setCompletingId] = useState(null);
   const [startingId, setStartingId] = useState(null);
   const [postponeTask, setPostponeTask] = useState(null);
   const [postponeReason, setPostponeReason] = useState("");
   const [postponeWhen, setPostponeWhen] = useState("");
+  const { addToast } = useToast();
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -58,7 +59,6 @@ export default function TaskQueue() {
   };
 
   const loadQueue = async () => {
-    setStatus("");
     const cached = await api.getTaskQueueCache();
     if (cached?.ok && cached.tasks?.length) {
       setTasks(cached.tasks || []);
@@ -66,7 +66,10 @@ export default function TaskQueue() {
     const res = await api.getTaskQueue();
     if (!res?.ok) {
       if (!cached?.ok) {
-        setStatus("Failed to load task queue.");
+        addToast({
+          title: "Failed to load task queue.",
+          variant: "error",
+        });
       }
       return;
     }
@@ -89,7 +92,10 @@ export default function TaskQueue() {
     try {
       const res = await api.completeTask(taskId);
       if (!res?.ok && removedTask) {
-        setStatus("Failed to complete task.");
+        addToast({
+          title: "Failed to complete task.",
+          variant: "error",
+        });
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
           const next = [...prev];
@@ -100,7 +106,10 @@ export default function TaskQueue() {
       }
     } catch (err) {
       if (removedTask) {
-        setStatus("Failed to complete task.");
+        addToast({
+          title: "Failed to complete task.",
+          variant: "error",
+        });
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
           const next = [...prev];
@@ -153,14 +162,28 @@ export default function TaskQueue() {
             hour: '2-digit', 
             minute: '2-digit' 
           });
-          setStatus(`Postponed to ${formatted}`);
+          addToast({
+            title: "Task postponed",
+            description: `Postponed to ${formatted}`,
+            variant: "success",
+          });
         } else if (res.sleep) {
-          setStatus("Sleep mode enabled");
+          addToast({
+            title: "Sleep mode enabled",
+            variant: "success",
+          });
         } else {
-          setStatus("Postponed 30 minutes");
+          addToast({
+            title: "Task postponed",
+            description: "Postponed 30 minutes",
+            variant: "success",
+          });
         }
       } else if (removedTask) {
-        setStatus("Failed to postpone task.");
+        addToast({
+          title: "Failed to postpone task.",
+          variant: "error",
+        });
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
           const next = [...prev];
@@ -171,7 +194,10 @@ export default function TaskQueue() {
       }
     } catch (err) {
       if (removedTask) {
-        setStatus("Failed to postpone task.");
+        addToast({
+          title: "Failed to postpone task.",
+          variant: "error",
+        });
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
           const next = [...prev];
@@ -191,17 +217,31 @@ export default function TaskQueue() {
         taskId: task.id,
         taskName: task.content,
         description: task.description || "",
-        mode: "queue",
+        mode: "corner",
       });
       if (res?.ok) {
-        setStatus(`Started session for "${task.content}"`);
+        addToast({
+          title: "Session started",
+          description: task.content,
+          variant: "success",
+        });
       } else if (res?.reason === "overlay-active") {
-        setStatus("Overlay already active. Close it before starting another task.");
+        addToast({
+          title: "Overlay already active",
+          description: "Close it before starting another task.",
+          variant: "warning",
+        });
       } else {
-        setStatus("Failed to start task session.");
+        addToast({
+          title: "Failed to start task session.",
+          variant: "error",
+        });
       }
     } catch (err) {
-      setStatus("Failed to start task session.");
+      addToast({
+        title: "Failed to start task session.",
+        variant: "error",
+      });
     } finally {
       setStartingId(null);
     }
@@ -275,8 +315,6 @@ export default function TaskQueue() {
             {tasks.length} task{tasks.length === 1 ? "" : "s"}
           </div>
         </div>
-
-        {status && <p className="text-sm text-amber mb-4">{status}</p>}
 
         <div className="space-y-6">
           <Card>

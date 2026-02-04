@@ -7,6 +7,7 @@ import SchedulerControl from "./components/SchedulerControl.jsx";
 import UsageData from "./components/UsageData.jsx";
 import TaskQueue from "./components/TaskQueue.jsx";
 import QuickStart from "./components/QuickStart.jsx";
+import { ToastProvider } from "./components/ui/toast.jsx";
 
 function getRoute() {
   const url = new URL(window.location.href);
@@ -41,5 +42,9 @@ export default function App() {
     return <Home />;
   }, [route]);
 
-  return <div className="min-h-screen bg-ink text-white">{page}</div>;
+  return (
+    <ToastProvider>
+      <div className="min-h-screen bg-ink text-white">{page}</div>
+    </ToastProvider>
+  );
 }

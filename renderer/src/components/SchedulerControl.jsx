@@ -4,12 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Button } from "./ui/button.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { ArrowLeft } from "./ui/icons.jsx";
+import { useToast } from "./ui/toast.jsx";
 
 export default function SchedulerControl() {
-  const [status, setStatus] = useState("");
   const [lastRun, setLastRun] = useState(null);
   const [nextRun, setNextRun] = useState(null);
   const [lastError, setLastError] = useState(null);
+  const { addToast } = useToast();
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -26,9 +27,15 @@ export default function SchedulerControl() {
   }, []);
 
   const runNow = async () => {
-    setStatus("Running scheduler...");
+    addToast({
+      title: "Running scheduler...",
+      variant: "info",
+    });
     const res = await api.runSchedulerNow();
-    setStatus(res.ok ? "Scheduler run completed" : "Scheduler run failed");
+    addToast({
+      title: res.ok ? "Scheduler run completed" : "Scheduler run failed",
+      variant: res.ok ? "success" : "error",
+    });
     if (res.ok) setLastRun(new Date().toISOString());
   };
 
@@ -70,7 +77,6 @@ export default function SchedulerControl() {
             <Button onClick={runNow} disabled={!api.isAvailable()}>
               Run scheduler now
             </Button>
-            {status && <p className="text-sm text-amber mt-4">{status}</p>}
             {lastError && (
               <p className="text-sm text-danger mt-2">Last error: {lastError}</p>
             )}

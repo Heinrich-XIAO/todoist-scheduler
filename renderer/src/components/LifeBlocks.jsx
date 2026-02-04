@@ -15,6 +15,7 @@ import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Trash } from "./ui/icons.jsx";
 import { ArrowLeft } from "./ui/icons.jsx";
+import { useToast } from "./ui/toast.jsx";
 
 const DAYS = [
   { key: "mon", label: "M" },
@@ -47,8 +48,8 @@ export default function LifeBlocks() {
     sat: false,
     sun: false,
   });
-  const [status, setStatus] = useState("");
   const [available, setAvailable] = useState(false);
+  const { addToast } = useToast();
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -89,17 +90,25 @@ export default function LifeBlocks() {
   };
 
   const onAdd = async () => {
-    setStatus("");
     if (!start || !end) {
-      setStatus("Start and end time required.");
+      addToast({
+        title: "Start and end time required.",
+        variant: "warning",
+      });
       return;
     }
     if (type === "one_off" && !date) {
-      setStatus("Date required for one-off blocks.");
+      addToast({
+        title: "Date required for one-off blocks.",
+        variant: "warning",
+      });
       return;
     }
     if (type === "weekly" && !Object.values(days).some(Boolean)) {
-      setStatus("Pick at least one weekday.");
+      addToast({
+        title: "Pick at least one weekday.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -264,8 +273,6 @@ export default function LifeBlocks() {
                   className="mt-2"
                 />
               </div>
-
-              {status && <p className="text-sm text-amber mt-3">{status}</p>}
 
               <Button
                 onClick={onAdd}

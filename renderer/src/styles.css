@@ -22,3 +22,17 @@
 .overlay-drag textarea {
   -webkit-app-region: no-drag;
 }
+
+.overlay-drag-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 32px;
+  -webkit-app-region: drag;
+  cursor: grab;
+}
+
+.overlay-drag-handle:active {
+  cursor: grabbing;
+}

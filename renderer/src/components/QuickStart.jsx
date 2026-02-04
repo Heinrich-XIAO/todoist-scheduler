@@ -4,13 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Button } from "./ui/button.jsx";
 import { Input } from "./ui/input.jsx";
 import { Alert } from "./ui/alert.jsx";
+import { useToast } from "./ui/toast.jsx";
 
 export default function QuickStart() {
   const [taskName, setTaskName] = useState("");
   const [description, setDescription] = useState("");
-  const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef(null);
+  const { addToast } = useToast();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -27,7 +28,6 @@ export default function QuickStart() {
     event.preventDefault();
     const trimmed = taskName.trim();
     if (!trimmed) return;
-    setStatus("");
     setSubmitting(true);
     const res = await api.startQuickTask({
       taskName: trimmed,
@@ -35,7 +35,10 @@ export default function QuickStart() {
     });
     setSubmitting(false);
     if (!res?.ok) {
-      setStatus("Could not start the task.");
+      addToast({
+        title: "Could not start the task.",
+        variant: "error",
+      });
     }
   };
 
@@ -72,7 +75,6 @@ export default function QuickStart() {
                 className="mt-2"
               />
             </div>
-            {status && <p className="text-sm text-amber">{status}</p>}
             <div className="flex items-center justify-between">
               <Button
                 type="button"

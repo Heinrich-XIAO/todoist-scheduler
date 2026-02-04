@@ -454,12 +454,6 @@ function createOverlayWindow() {
       overlaySizeInterval = null;
     }
   });
-  if (!overlaySizeInterval) {
-    overlaySizeInterval = setInterval(() => {
-      if (!overlayWindow) return;
-      if (overlayMode === "corner") applyCornerBounds();
-    }, 5000);
-  }
 }
 
 function createTray() {
@@ -2096,7 +2090,13 @@ ipcMain.handle("save-life-blocks", (_event, data) => {
 });
 
 ipcMain.handle("get-overlay-task", () => {
-  return { task: overlayTask, mode: overlayMode };
+  const taskId = overlayTask?.id;
+  return {
+    task: overlayTask,
+    mode: overlayMode,
+    elapsedSeconds: taskId ? getActiveSessionSeconds(taskId) : null,
+    sessionActive: taskId ? activeSessions.has(taskId) : false,
+  };
 });
 
 ipcMain.handle("set-overlay-mode", (_event, mode) => {
@@ -2342,7 +2342,7 @@ ipcMain.handle("stop-task-session", (_event, payload) => {
 
 ipcMain.handle("snap-overlay", () => {
   if (!overlayWindow || overlayMode !== "corner") return { ok: false };
-  applyCornerBounds();
+  // No-op: keep the user's dragged position.
   return { ok: true };
 });
 

@@ -4,6 +4,7 @@ import { Button } from "./ui/button.jsx";
 import { ArrowDownRight, Calendar, Clock } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
 import { PostponeModal } from "./PostponeModal.jsx";
+import { useToast } from "./ui/toast.jsx";
 
 function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -28,10 +29,10 @@ export default function Overlay() {
   const [justificationOpen, setJustificationOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [postponeWhen, setPostponeWhen] = useState("");
-  const [status, setStatus] = useState("");
   const [sessionStarted, setSessionStarted] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
     let mounted = true;
@@ -40,9 +41,13 @@ export default function Overlay() {
       setTask(data.task);
       setMode(data.mode || "full");
       setSnoozeCount(data.task?.snoozeCount || 0);
-      if (data.task?.autoStart) {
+      const serverElapsed = Number.isFinite(data.elapsedSeconds) ? data.elapsedSeconds : 0;
+      if (data.sessionActive || data.task?.autoStart) {
         setTimerStarted(true);
         setSessionStarted(true);
+        setElapsed(serverElapsed);
+      } else if (serverElapsed > 0) {
+        setElapsed(serverElapsed);
       }
     });
     const handler = (next) => setMode(next);
@@ -51,6 +56,28 @@ export default function Overlay() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sync = async () => {
+      const data = await api.getOverlayTask();
+      if (cancelled) return;
+      const serverElapsed = Number.isFinite(data.elapsedSeconds) ? data.elapsedSeconds : null;
+      if (serverElapsed !== null) {
+        setElapsed(serverElapsed);
+      }
+      if (data.sessionActive && !timerStarted) {
+        setTimerStarted(true);
+        setSessionStarted(true);
+      }
+    };
+    sync();
+    const id = setInterval(sync, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [timerStarted]);
 
   useEffect(() => {
     if (!timerStarted) return undefined;
@@ -79,7 +106,6 @@ export default function Overlay() {
   }, [elapsed, task]);
 
   const onSnooze = async () => {
-    setStatus("");
     if (snoozeCount > 0) {
       if (mode === "corner") {
         setMode("full");
@@ -132,7 +158,11 @@ export default function Overlay() {
         estimatedMinutes: task.estimatedMinutes || 30,
       });
     }
-    setStatus(result.message);
+    addToast({
+      title: result.approved ? "Snoozed" : "Snooze denied",
+      description: result.message,
+      variant: result.approved ? "success" : "warning",
+    });
     setJustificationOpen(false);
     setReason("");
   };
@@ -183,11 +213,23 @@ export default function Overlay() {
         hour: '2-digit', 
         minute: '2-digit' 
       });
-      setStatus(`Postponed to ${formatted} - scheduler will not move it`);
+      addToast({
+        title: "Task postponed",
+        description: `Postponed to ${formatted} - scheduler will not move it`,
+        variant: "success",
+      });
     } else if (result.sleep) {
-      setStatus("Sleep mode enabled - tasks will resume tomorrow");
+      addToast({
+        title: "Sleep mode enabled",
+        description: "Tasks will resume tomorrow",
+        variant: "success",
+      });
     } else {
-      setStatus("Postponed 30 minutes - next task queued");
+      addToast({
+        title: "Task postponed",
+        description: "Postponed 30 minutes - next task queued",
+        variant: "success",
+      });
     }
     resetPostponeModal();
   };
@@ -240,9 +282,6 @@ export default function Overlay() {
           zIndex: 0 
         }}
       />
-      {dragging && mode === "corner" && (
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-10 w-[320px] h-[70px] border border-dashed border-amber/70 rounded-2xl pointer-events-none z-50" />
-      )}
       {mode === "corner" ? (
           <div 
             className={`h-full w-full border border-zinc-700 rounded-2xl flex items-center px-4 relative z-10 cursor-pointer ${
@@ -250,8 +289,9 @@ export default function Overlay() {
             }`}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
-            style={{ WebkitAppRegion: 'no-drag' }}
+            style={{ WebkitAppRegion: "no-drag" }}
           >
+            <div className="overlay-drag-handle" />
             {!isHovered ? (
               <>
                 <div className="text-sm font-semibold mr-4">{formatTime(elapsed)}</div>
@@ -424,7 +464,6 @@ export default function Overlay() {
             </div>
           )}
 
-          {status && <div className="text-sm text-amber">{status}</div>}
         </div>
       )}
 
