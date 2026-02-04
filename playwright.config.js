@@ -11,5 +11,10 @@ export default defineConfig({
   reporter: "list",
   use: {
     trace: "retain-on-failure",
+    actionTimeout: 10_000,
+    launchOptions: {
+      args: ["--disable-gpu", "--disable-dev-shm-usage"],
+    },
+    viewport: { width: 1280, height: 720 },
   },
 });

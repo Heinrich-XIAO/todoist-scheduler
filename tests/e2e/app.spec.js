@@ -126,10 +126,12 @@ test.describe("Todoist Scheduler Electron", () => {
     await expect(page.getByTestId("task-overdue-1")).toHaveCount(0);
   });
 
-  test("overlay task can start", async () => {
+test("overlay task can start", async () => {
     await navigate(page, "overlay");
     await expect(page.getByTestId("page-overlay")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Focus sprint" })).toBeVisible();
+
+    await expect(page.getByText("Suggested from queue")).toBeVisible();
 
     await page.getByRole("button", { name: "Start Task" }).click();
     await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
@@ -148,5 +150,13 @@ test.describe("Todoist Scheduler Electron", () => {
     await expect(startButton).toBeEnabled();
     await startButton.click();
     await expect(page.getByText("Could not start the task.")).toHaveCount(0);
+  });
+
+  test("life blocks show weekly stub entry", async () => {
+    await navigate(page, "config");
+    await expect(page.getByTestId("page-life-blocks")).toBeVisible();
+    await expect(
+      page.getByText("Weekly M,W 14:00-15:30 (Deep work)")
+    ).toBeVisible();
   });
 });
