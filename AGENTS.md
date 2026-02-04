@@ -95,6 +95,10 @@ Development Notes for AI Agents
 - Legacy Python daemon lives in `legacy/`. If you change legacy code or the legacy plist, use `legacy/scripts/update.sh`.
 - The Electron app replaces the daemon and does not require an update script.
 
+Mistakes
+
+- If you make a mistake while working in this repo, document it here in its own subsection.
+
 Future config
 
 - We may add `config.toml` later; avoid adding it until requested.
