@@ -2242,7 +2242,10 @@ ipcMain.handle("autostart-disable", () => {
 
 app.whenReady().then(() => {
   stopLegacyDaemon();
-  enableAutostart();
+  // Only enable autostart in production, not in development
+  if (app.isPackaged) {
+    enableAutostart();
+  }
   createMainWindow();
   createTray();
   const registered = globalShortcut.register("Control+Space", () => {
