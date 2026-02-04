@@ -234,16 +234,16 @@ export default function TaskQueue() {
   }, []);
 
   const grouped = useMemo(() => {
-    const now = Date.now();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const todayStartMs = todayStart.getTime();
     const overdue = [];
     const today = [];
     const upcoming = [];
     tasks.forEach((task) => {
       const due = task.due ? Date.parse(task.due) : null;
       if (!due) return;
-      if (due < now) {
+      if (due < todayStartMs) {
         overdue.push(task);
         return;
       }

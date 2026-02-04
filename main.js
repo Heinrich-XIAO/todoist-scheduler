@@ -987,7 +987,7 @@ async function todoistFetch(pathname, options = {}) {
   if (!TODOIST_KEY) {
     throw new Error("Missing TODOIST_KEY");
   }
-  const res = await fetch(`https://api.todoist.com/rest/v2${pathname}`, {
+  const res = await fetch(`https://api.todoist.com/api/v1${pathname}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${TODOIST_KEY}`,
@@ -997,6 +997,9 @@ async function todoistFetch(pathname, options = {}) {
   });
   if (!res.ok) {
     const text = await res.text();
+    log(
+      `Todoist error ${res.status}: url=${res.url} method=${options.method || "GET"} body=${options.body || ""} response=${text}`
+    );
     throw new Error(`Todoist error ${res.status}: ${text}`);
   }
   if (res.status === 204) return null;
@@ -1004,7 +1007,22 @@ async function todoistFetch(pathname, options = {}) {
 }
 
 async function fetchTasks() {
-  return todoistFetch("/tasks");
+  const tasks = [];
+  let cursor = null;
+  do {
+    const params = new URLSearchParams({ limit: "200" });
+    if (cursor) params.set("cursor", cursor);
+    const res = await todoistFetch(`/tasks?${params.toString()}`);
+    if (Array.isArray(res)) {
+      tasks.push(...res);
+      cursor = null;
+    } else {
+      const page = res?.results || [];
+      tasks.push(...page);
+      cursor = res?.next_cursor || null;
+    }
+  } while (cursor);
+  return tasks;
 }
 
 function isDateOnly(task) {
@@ -1022,12 +1040,12 @@ function getTaskDate(task) {
 }
 
 function isTaskCompleted(task) {
-  return task.is_completed || task.completed_at;
+  return task.is_completed || task.completed_at || task.checked;
 }
 
 function hasDontChangeTime(task) {
   const labels = task.labels || [];
-  return labels.includes("#dontchangetime");
+  return labels.includes("dontchangetime") || labels.includes("#dontchangetime");
 }
 
 function parseDuration(description) {
@@ -1158,35 +1176,60 @@ async function isDailyActivity(task, description) {
 }
 
 async function parseNaturalLanguageDate(text) {
-  if (!OPENROUTER_KEY || !text) return null;
-  
+  if (!OPENROUTER_KEY || !text) {
+    log(`parseNaturalLanguageDate: skipped (OPENROUTER_KEY=${OPENROUTER_KEY ? "set" : "missing"}, text=${text ? "present" : "empty"})`);
+    return null;
+  }
+
   const now = new Date();
   const currentDateStr = now.toISOString().slice(0, 10);
   const currentTimeStr = now.toTimeString().slice(0, 5);
-  
+
+  log(
+    `parseNaturalLanguageDate: input="${text}" currentDate=${currentDateStr} currentTime=${currentTimeStr}`
+  );
+
   const prompt =
     `Current date: ${currentDateStr}\n` +
     `Current time: ${currentTimeStr}\n\n` +
     `Parse this text and extract a specific date/time: "${text}"\n\n` +
     "Reply with ONLY an ISO 8601 datetime string (e.g., 2024-01-15T14:30:00) or 'NONE' if no date found.";
-  
+
   const content = await openrouterChat(
     "You parse natural language dates. Reply only with ISO datetime or NONE.",
     prompt,
     30
   );
-  
-  if (!content) return null;
-  
-  const cleaned = content.trim().toUpperCase();
-  if (cleaned === "NONE" || cleaned.includes("NONE")) return null;
-  
-  // Try to extract ISO date from the response
-  const isoMatch = content.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
-  if (isoMatch) {
-    return isoMatch[0];
+
+  if (!content) {
+    log("parseNaturalLanguageDate: empty response from OpenRouter");
+    return null;
   }
-  
+
+  const cleaned = content.trim().toUpperCase();
+  if (cleaned === "NONE" || cleaned.includes("NONE")) {
+    log(`parseNaturalLanguageDate: OpenRouter returned NONE (raw="${content}")`);
+    return null;
+  }
+
+  const isoMatch = content.match(/\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?)?(?:Z|[+-]\d{2}:\d{2})?/);
+  if (isoMatch) {
+    const value = isoMatch[0];
+    log(`parseNaturalLanguageDate: parsed ISO="${value}" from raw="${content}"`);
+    if (value.includes("T")) return value;
+    const parsed = new Date(`${value}T00:00:00`);
+    const base = startTimeFor(parsed);
+    const fallback = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(
+      base.getDate()
+    ).padStart(2, "0")}T${String(base.getHours()).padStart(2, "0")}:${String(base.getMinutes()).padStart(
+      2,
+      "0"
+    )}:${String(base.getSeconds()).padStart(2, "0")}`;
+    log(`parseNaturalLanguageDate: date-only -> startTimeFor -> "${fallback}"`);
+    return fallback;
+  }
+
+  log(`parseNaturalLanguageDate: no ISO match in response="${content}"`);
   return null;
 }
 
@@ -1325,14 +1368,13 @@ function isFixedTask(task) {
 }
 
 function splitByDay(tasks) {
-  const now = Date.now();
-  const today = new Date();
+  const today = nowDate();
   const overdue = [];
   const todayTasks = [];
   const upcoming = [];
   tasks.forEach((task) => {
     const dueMs = task.due.getTime();
-    if (dueMs < now) {
+    if (dueMs < today.getTime()) {
       overdue.push(task);
       return;
     }
@@ -2257,10 +2299,14 @@ ipcMain.handle("defer-task", (_event, payload) => {
 
 ipcMain.handle("postpone-task", async (_event, payload) => {
   const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes, reason } = payload;
+  log(
+    `postpone-task: start taskId=${taskId} taskName="${taskName || ""}" mode=${mode} reason="${reason || ""}"`
+  );
   stopSession(taskId, elapsedSeconds, mode);
   
   // STEP 1: First check if the reason is valid/sleep-related
   const isSleep = await isSleepReason(reason);
+  log(`postpone-task: isSleep=${isSleep}`);
   
   // STEP 2: Then try to parse a date from the reason using AI
   let customDueDateTime = null;
@@ -2268,14 +2314,19 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
     customDueDateTime = await parseNaturalLanguageDate(reason);
     if (customDueDateTime) {
       log(`AI parsed date from "${reason}": ${customDueDateTime}`);
+    } else {
+      log(`postpone-task: no AI date parsed from reason="${reason}"`);
     }
   }
   
   // If AI parsed a date, update the task in Todoist with that time
   if (customDueDateTime) {
     try {
-      // Add the #dontchangetime label to prevent scheduler from moving it
-      const labels = ["#dontchangetime"];
+      // Add the dontchangetime label to prevent scheduler from moving it
+      const labels = ["dontchangetime"];
+      log(
+        `postpone-task: updating Todoist due_datetime=${customDueDateTime} labels=${JSON.stringify(labels)}`
+      );
       await todoistFetch(`/tasks/${taskId}`, {
         method: "POST",
         body: JSON.stringify({
@@ -2283,6 +2334,7 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
           labels: labels,
         }),
       });
+      log(`postpone-task: Todoist update success for taskId=${taskId}`);
       logUsage("task_postpone_custom_time", {
         task_id: taskId,
         task_name: taskName || "",
@@ -2321,6 +2373,9 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
     state.sleep_until = snoozeUntil;
   }
   saveOverlayState(state);
+  log(
+    `postpone-task: overlay state updated taskId=${taskId} snooze_until=${snoozeUntil} custom_postponed=${customDueDateTime ? "yes" : "no"}`
+  );
 
   activeOverlays.delete(taskId);
   overlayTask = null;
@@ -2331,6 +2386,9 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
       checkAndNotify().catch((err) => log(`Notifier error: ${err}`));
     }, 1000);
   }
+  log(
+    `postpone-task: done taskId=${taskId} sleep=${isSleep} customPostponed=${customDueDateTime ? "yes" : "no"}`
+  );
   return { ok: true, sleep: isSleep, customPostponed: customDueDateTime ? true : false, parsedDate: customDueDateTime };
 });
 

@@ -56,6 +56,7 @@ Electron app
   - `data/logs/electron.log`
   - `data/logs/electron-dev.log`
   - `data/logs/electron-dev.error.log`
+- You can check `data/logs/electron.log` and `data/logs/electron-dev.log` yourself.
 
 Environment variables
 
