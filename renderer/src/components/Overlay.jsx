@@ -209,8 +209,8 @@ export default function Overlay() {
       )}
       {mode === "corner" ? (
           <div 
-            className={`h-full w-full border border-zinc-700 rounded-2xl flex items-center px-4 relative z-10 cursor-pointer transition-colors ${
-              isHovered ? 'bg-zinc-800' : 'bg-zinc-900/90'
+            className={`h-full w-full border border-zinc-700 rounded-2xl flex items-center px-4 relative z-10 cursor-pointer ${
+              isHovered ? '' : ''
             }`}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
@@ -222,7 +222,7 @@ export default function Overlay() {
                 <div className="flex-1 text-sm truncate">{task.content}</div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center gap-2">
+              <div className="flex-1 flex items-center justify-center gap-2 bg-zinc-900/80 px-2 py-1 rounded">
                 <Button
                   size="sm"
                   variant="default"
