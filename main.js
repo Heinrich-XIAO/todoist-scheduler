@@ -46,6 +46,7 @@ const WEEKEND_START_HOUR = 9;
 
 const NOTIFICATION_WINDOW_MINUTES = 2;
 const NOTIFICATION_COOLDOWN_MINUTES = 5;
+const QUEUE_SUGGESTION_COOLDOWN_MINUTES = 10;
 const CHECK_INTERVAL_MS = 10_000;
 const SCHEDULER_INTERVAL_MS = 300_000;
 
@@ -196,6 +197,8 @@ let lastNotificationAt = null;
 let tray = null;
 let activeSessions = new Map();
 let overlaySizeInterval = null;
+let lastQueueSuggestionAt = 0;
+let lastQueueSuggestionTaskId = null;
 
 let lastNotificationTime = {};
 let activeOverlays = new Set();
@@ -1280,6 +1283,29 @@ function splitByDay(tasks) {
   return { overdue, today: todayTasks, upcoming };
 }
 
+function buildQueueCandidates(tasks) {
+  return tasks
+    .filter((task) => !isTaskCompleted(task))
+    .filter((task) => task.due?.date || task.due?.datetime)
+    .map((task) => {
+      let due = getTaskDate(task);
+      if (due && isDateOnly(task)) {
+        due = new Date(due.getFullYear(), due.getMonth(), due.getDate(), 23, 59, 59);
+      }
+      const duration = parseDuration(task.description || "");
+      return {
+        id: task.id,
+        content: task.content,
+        description: task.description || "",
+        due,
+        is_recurring: task.due?.is_recurring || false,
+        priority: task.priority,
+        duration_minutes: duration,
+      };
+    })
+    .filter((task) => Boolean(task.due));
+}
+
 async function orderQueueTasks(tasks) {
   if (tasks.length === 0) return [];
   const aiOrder = await aiOrderQueue(tasks);
@@ -1900,6 +1926,58 @@ async function checkSnoozedTasks() {
   }
 }
 
+async function checkQueueSuggestion() {
+  if (overlayWindow || overlayTask) return;
+  const state = loadOverlayState();
+  const now = Date.now();
+  if (state.sleep_until && now < Number(state.sleep_until)) return;
+  if (
+    lastQueueSuggestionAt &&
+    now - lastQueueSuggestionAt < QUEUE_SUGGESTION_COOLDOWN_MINUTES * 60_000
+  ) {
+    return;
+  }
+
+  let tasks = [];
+  try {
+    tasks = await fetchTasks();
+  } catch (err) {
+    log(`Queue suggestion fetch failed: ${err}`);
+    return;
+  }
+
+  const queueCandidates = buildQueueCandidates(tasks);
+  if (queueCandidates.length === 0) return;
+  const ordered = await orderQueueTasks(queueCandidates);
+  const nextTask = ordered[0];
+  if (!nextTask) return;
+  if (overlayWindow || overlayTask) return;
+  if (
+    lastQueueSuggestionTaskId === nextTask.id &&
+    lastQueueSuggestionAt &&
+    now - lastQueueSuggestionAt < QUEUE_SUGGESTION_COOLDOWN_MINUTES * 60_000
+  ) {
+    return;
+  }
+
+  lastQueueSuggestionAt = now;
+  lastQueueSuggestionTaskId = nextTask.id;
+  logUsage("queue_suggestion_show", { task_id: nextTask.id, task_name: nextTask.content || "" });
+
+  const duration = await estimateDuration(nextTask.content || "", nextTask.description || "");
+  overlayTask = {
+    id: nextTask.id,
+    content: nextTask.content,
+    description: nextTask.description || "",
+    estimatedMinutes: duration.minutes || 30,
+    snoozeCount: 0,
+    suggested: true,
+  };
+  overlayMode = "full";
+  ensureOverlayWindow();
+  setOverlayMode("full");
+}
+
 function startLoops() {
   const scheduler = new Scheduler();
   schedulerInstance = scheduler;
@@ -1930,6 +2008,7 @@ function startLoops() {
   setInterval(() => {
     checkAndNotify().catch((err) => log(`Notifier error: ${err}`));
     checkSnoozedTasks().catch((err) => log(`Snooze check error: ${err}`));
+    checkQueueSuggestion().catch((err) => log(`Queue suggestion error: ${err}`));
   }, CHECK_INTERVAL_MS);
 }
 
@@ -1956,13 +2035,27 @@ ipcMain.handle("set-overlay-mode", (_event, mode) => {
 ipcMain.handle("start-quick-task", async (_event, payload) => {
   const taskName = payload?.taskName?.trim();
   const description = payload?.description?.trim() || "";
+  const replaceTaskId = payload?.replaceTaskId;
   if (!taskName) return { ok: false };
-  const estimate = await estimateDuration(taskName, description);
+  let estimateMinutes = null;
+  if (Number.isFinite(payload?.estimatedMinutes)) {
+    estimateMinutes = Number(payload.estimatedMinutes);
+  }
+  if (!estimateMinutes || estimateMinutes <= 0) {
+    const estimate = await estimateDuration(taskName, description);
+    estimateMinutes = estimate.minutes || 30;
+  }
+  if (replaceTaskId) {
+    const state = loadOverlayState();
+    if (state.active_tasks?.[replaceTaskId]) delete state.active_tasks[replaceTaskId];
+    saveOverlayState(state);
+    activeOverlays.delete(replaceTaskId);
+  }
   overlayTask = {
     id: `quick-${Date.now()}`,
     content: taskName,
     description,
-    estimatedMinutes: estimate.minutes || 30,
+    estimatedMinutes: estimateMinutes,
     snoozeCount: 0,
     local: true,
   };
@@ -1972,7 +2065,11 @@ ipcMain.handle("start-quick-task", async (_event, payload) => {
   if (quickWindow) {
     quickWindow.close();
   }
-  logUsage("quick_task_start", { task_name: taskName });
+  logUsage("quick_task_start", {
+    task_name: taskName,
+    estimated_minutes: estimateMinutes,
+    replaced_task_id: replaceTaskId || "",
+  });
   return { ok: true, taskId: overlayTask.id, estimatedMinutes: overlayTask.estimatedMinutes };
 });
 
@@ -2190,26 +2287,7 @@ ipcMain.handle("open-task-in-todoist", (_event, taskId) => {
 ipcMain.handle("get-task-queue", async () => {
   try {
     const tasks = await fetchTasks();
-    const queueCandidates = tasks
-      .filter((task) => !isTaskCompleted(task))
-      .filter((task) => task.due?.date || task.due?.datetime)
-      .map((task) => {
-        let due = getTaskDate(task);
-        if (due && isDateOnly(task)) {
-          due = new Date(due.getFullYear(), due.getMonth(), due.getDate(), 23, 59, 59);
-        }
-        const duration = parseDuration(task.description || "");
-        return {
-          id: task.id,
-          content: task.content,
-          description: task.description || "",
-          due,
-          is_recurring: task.due?.is_recurring || false,
-          priority: task.priority,
-          duration_minutes: duration,
-        };
-      })
-      .filter((task) => Boolean(task.due));
+    const queueCandidates = buildQueueCandidates(tasks);
     const ordered = await orderQueueTasks(queueCandidates);
     const queue = ordered.map((task) => ({
       ...task,

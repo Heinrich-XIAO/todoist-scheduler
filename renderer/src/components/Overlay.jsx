@@ -27,8 +27,12 @@ export default function Overlay() {
   const [snoozeCount, setSnoozeCount] = useState(0);
   const [postponeOpen, setPostponeOpen] = useState(false);
   const [justificationOpen, setJustificationOpen] = useState(false);
+  const [customTaskOpen, setCustomTaskOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [postponeWhen, setPostponeWhen] = useState("");
+  const [customTaskName, setCustomTaskName] = useState("");
+  const [customTaskMinutes, setCustomTaskMinutes] = useState("");
+  const [customTaskError, setCustomTaskError] = useState("");
   const [status, setStatus] = useState("");
   const [sessionStarted, setSessionStarted] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -180,6 +184,44 @@ export default function Overlay() {
     setPostponeWhen("");
   };
 
+  const submitCustomTask = async () => {
+    const name = customTaskName.trim();
+    if (!name) {
+      setCustomTaskError("Please enter a task name.");
+      return;
+    }
+    let minutes = null;
+    const minutesRaw = customTaskMinutes.trim();
+    if (minutesRaw) {
+      const parsed = Number(minutesRaw);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setCustomTaskError("Enter a positive number of minutes or leave blank.");
+        return;
+      }
+      minutes = parsed;
+    }
+    setCustomTaskError("");
+    const res = await api.startQuickTask({
+      taskName: name,
+      estimatedMinutes: minutes ?? undefined,
+      replaceTaskId: task?.id,
+    });
+    if (res?.ok) {
+      const next = await api.getOverlayTask();
+      setTask(next.task);
+      setMode(next.mode || "full");
+      setSnoozeCount(next.task?.snoozeCount || 0);
+      setTimerStarted(false);
+      setElapsed(0);
+      setSessionStarted(false);
+      setCustomTaskOpen(false);
+      setCustomTaskName("");
+      setCustomTaskMinutes("");
+    } else {
+      setCustomTaskError("Could not start that task.");
+    }
+  };
+
   if (!task) {
     return (
       <div className="h-screen flex items-center justify-center text-zinc-400">
@@ -274,6 +316,11 @@ export default function Overlay() {
           </div>
       ) : (
         <div className="h-full w-full bg-ink/95 text-white flex flex-col items-center justify-center gap-6 relative z-10">
+          {task.suggested && (
+            <div className="text-xs uppercase tracking-wide text-amber-300/90">
+              Suggested from queue
+            </div>
+          )}
           <h1 className="text-5xl font-semibold text-center max-w-4xl break-words">
             {task.content}
           </h1>
@@ -304,6 +351,15 @@ export default function Overlay() {
                 >
                   Start Task
                 </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setCustomTaskOpen(true);
+                  setCustomTaskError("");
+                }}
+              >
+                Start Different Task
+              </Button>
               <div className="flex items-center gap-3">
                 <Button
                   size="icon"
@@ -450,6 +506,52 @@ export default function Overlay() {
                 disabled={!reason.trim()}
               >
                 Submit
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {customTaskOpen && (
+        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="w-[520px] bg-zinc-900 border border-zinc-700 rounded-xl p-6">
+            <h3 className="text-lg font-semibold mb-2">Start a different task</h3>
+            <p className="text-sm text-zinc-400 mb-4">
+              Enter a task name and optional time estimate. Leave time blank to autogenerate.
+            </p>
+            <div className="mb-4">
+              <label className="text-sm text-zinc-300 mb-2 block">Task name:</label>
+              <Input
+                value={customTaskName}
+                onChange={(e) => setCustomTaskName(e.target.value)}
+                placeholder="Write weekly update"
+                className="w-full"
+              />
+            </div>
+            <div className="mb-4">
+              <label className="text-sm text-zinc-300 mb-2 block">Estimated minutes (optional):</label>
+              <Input
+                value={customTaskMinutes}
+                onChange={(e) => setCustomTaskMinutes(e.target.value)}
+                placeholder="30"
+                className="w-full"
+              />
+            </div>
+            {customTaskError && <div className="text-sm text-amber mb-3">{customTaskError}</div>}
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setCustomTaskOpen(false);
+                  setCustomTaskName("");
+                  setCustomTaskMinutes("");
+                  setCustomTaskError("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={submitCustomTask} disabled={!customTaskName.trim()}>
+                Start
               </Button>
             </div>
           </div>
