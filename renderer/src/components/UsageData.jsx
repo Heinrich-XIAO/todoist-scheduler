@@ -47,7 +47,7 @@ export default function UsageData() {
   }, [dashboard]);
 
   return (
-    <div className="min-h-screen bg-ink text-white">
+    <div className="min-h-screen bg-ink text-white" data-testid="page-usage">
       <div className="max-w-5xl mx-auto px-8 py-12">
         <div className="mb-8">
           <Button

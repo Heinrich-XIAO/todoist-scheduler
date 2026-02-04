@@ -37,7 +37,7 @@ export default function SchedulerControl() {
   };
 
   return (
-    <div className="min-h-screen bg-ink text-white">
+    <div className="min-h-screen bg-ink text-white" data-testid="page-scheduler">
       <div className="max-w-4xl mx-auto px-8 py-12">
         <div className="mb-8">
           <Button

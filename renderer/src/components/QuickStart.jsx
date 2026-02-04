@@ -39,7 +39,10 @@ export default function QuickStart() {
   };
 
   return (
-    <div className="min-h-screen bg-ink text-white flex items-center justify-center p-6">
+    <div
+      className="min-h-screen bg-ink text-white flex items-center justify-center p-6"
+      data-testid="page-quick"
+    >
       <Card className="w-full max-w-xl">
         <CardHeader>
           <CardTitle>Start a task</CardTitle>

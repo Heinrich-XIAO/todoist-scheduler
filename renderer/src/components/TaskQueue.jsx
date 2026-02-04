@@ -260,7 +260,7 @@ export default function TaskQueue() {
   const primaryTaskId = useMemo(() => tasks[0]?.id, [tasks]);
 
   return (
-    <div className="min-h-screen bg-ink text-white">
+    <div className="min-h-screen bg-ink text-white" data-testid="page-queue">
       <div className="max-w-5xl mx-auto px-8 py-12">
         <div className="mb-8">
           <Button
@@ -305,6 +305,7 @@ export default function TaskQueue() {
                 {grouped.overdue.map((task) => (
                   <div
                     key={task.id}
+                    data-testid={`task-${task.id}`}
                     className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
                       task.id === primaryTaskId
                         ? "border-emerald-500/70 bg-emerald-500/10"
@@ -386,6 +387,7 @@ export default function TaskQueue() {
                 {grouped.today.map((task) => (
                   <div
                     key={task.id}
+                    data-testid={`task-${task.id}`}
                     className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
                       task.id === primaryTaskId
                         ? "border-emerald-500/70 bg-emerald-500/10"
@@ -467,6 +469,7 @@ export default function TaskQueue() {
                 {grouped.upcoming.map((task) => (
                   <div
                     key={task.id}
+                    data-testid={`task-${task.id}`}
                     className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
                       task.id === primaryTaskId
                         ? "border-emerald-500/70 bg-emerald-500/10"

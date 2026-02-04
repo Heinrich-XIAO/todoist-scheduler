@@ -26,6 +26,8 @@ dotenv.config({ path: path.join(repoRoot, ".env.local") });
 const APP_NAME = "Todoist Scheduler";
 app.setName(APP_NAME);
 
+const IS_E2E = process.env.E2E_TEST === "1";
+
 // Disable network service sandbox to prevent crashes
 app.commandLine.appendSwitch("disable-features", "NetworkService,NetworkServiceSandbox");
 app.commandLine.appendSwitch("disable-gpu-sandbox");
@@ -385,11 +387,13 @@ function createMainWindow() {
     },
   });
   mainWindow.loadURL(getAppUrl());
-  mainWindow.on("close", (event) => {
-    if (app.isQuiting) return;
-    event.preventDefault();
-    mainWindow.hide();
-  });
+  if (!IS_E2E) {
+    mainWindow.on("close", (event) => {
+      if (app.isQuiting) return;
+      event.preventDefault();
+      mainWindow.hide();
+    });
+  }
 }
 
 function createQuickWindow() {
@@ -1254,11 +1258,19 @@ async function openrouterChat(system, prompt, maxTokens) {
       }),
     });
     if (!res.ok) {
+      const text = await res.text();
+      log(
+        `OpenRouter error ${res.status}: url=${res.url} response=${text}`
+      );
       return null;
     }
     const data = await res.json();
+    if (!data?.choices?.[0]?.message?.content) {
+      log(`OpenRouter response missing content: ${JSON.stringify(data).slice(0, 500)}`);
+    }
     return data.choices?.[0]?.message?.content || null;
   } catch (err) {
+    log(`OpenRouter request failed: ${err}`);
     return null;
   }
 }
@@ -1396,6 +1408,12 @@ function buildQueueCandidates(tasks) {
     .filter((task) => task.due?.date || task.due?.datetime)
     .map((task) => {
       let due = getTaskDate(task);
+      if (due && Number.isNaN(due.getTime())) {
+        log(
+          `buildQueueCandidates: invalid due for taskId=${task.id} due=${JSON.stringify(task.due)}`
+        );
+        due = null;
+      }
       if (due && isDateOnly(task)) {
         due = new Date(due.getFullYear(), due.getMonth(), due.getDate(), 23, 59, 59);
       }
@@ -1449,10 +1467,18 @@ async function orderQueueTasks(tasks) {
 }
 
 function serializeQueueTasks(tasks) {
-  return tasks.map((task) => ({
-    ...task,
-    due: task.due ? task.due.toISOString() : null,
-  }));
+  return tasks.map((task) => {
+    let dueIso = null;
+    if (task.due && !Number.isNaN(task.due.getTime())) {
+      dueIso = task.due.toISOString();
+    } else if (task.due) {
+      log(`serializeQueueTasks: invalid due for taskId=${task.id}`);
+    }
+    return {
+      ...task,
+      due: dueIso,
+    };
+  });
 }
 
 function normalizeDay(day) {
@@ -2548,24 +2574,28 @@ ipcMain.handle("autostart-disable", () => {
 });
 
 app.whenReady().then(() => {
-  stopLegacyDaemon();
-  // Only enable autostart in production, not in development
-  if (app.isPackaged) {
-    enableAutostart();
+  if (!IS_E2E) {
+    stopLegacyDaemon();
+    // Only enable autostart in production, not in development
+    if (app.isPackaged) {
+      enableAutostart();
+    }
   }
   createMainWindow();
-  createTray();
-  const registered = globalShortcut.register("Control+Space", () => {
-    if (!quickWindow) createQuickWindow();
-    if (quickWindow) {
-      quickWindow.show();
-      quickWindow.focus();
+  if (!IS_E2E) {
+    createTray();
+    const registered = globalShortcut.register("Control+Space", () => {
+      if (!quickWindow) createQuickWindow();
+      if (quickWindow) {
+        quickWindow.show();
+        quickWindow.focus();
+      }
+    });
+    if (!registered) {
+      log("Failed to register Control+Space global shortcut");
     }
-  });
-  if (!registered) {
-    log("Failed to register Control+Space global shortcut");
+    startLoops();
   }
-  startLoops();
 });
 
 app.on("before-quit", () => {

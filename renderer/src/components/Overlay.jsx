@@ -249,7 +249,10 @@ export default function Overlay() {
 
   if (!task) {
     return (
-      <div className="h-screen flex items-center justify-center text-zinc-400">
+      <div
+        className="h-screen flex items-center justify-center text-zinc-400"
+        data-testid="page-overlay"
+      >
         {api.isAvailable() ? "Waiting for task..." : "Overlay preview only in Electron"}
       </div>
     );
@@ -260,6 +263,7 @@ export default function Overlay() {
   return (
     <div
       className={`h-screen w-screen overlay-drag ${mode === "corner" ? "p-0" : "p-10"}`}
+      data-testid="page-overlay"
       onMouseDown={(event) => {
         if (mode !== "corner") return;
         const target = event.target;
