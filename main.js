@@ -544,6 +544,9 @@ function describeOverlayWindow() {
 function applyCornerBounds() {
   if (!overlayWindow) return;
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
+  overlayWindow.setResizable(false);
+  overlayWindow.setMinimumSize(320, 70);
+  overlayWindow.setMaximumSize(320, 70);
   overlayWindow.setSize(320, 70);
   const { width, height } = overlayWindow.getBounds();
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
@@ -567,6 +570,9 @@ function setOverlayMode(mode) {
       applyCornerBounds();
     }
   } else {
+    overlayWindow.setResizable(true);
+    overlayWindow.setMinimumSize(0, 0);
+    overlayWindow.setMaximumSize(10000, 10000);
     overlayWindow.setFullScreen(true);
     overlayWindow.setAlwaysOnTop(true, "screen-saver");
   }

@@ -4,13 +4,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Button } from "./ui/button.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { ArrowLeft } from "./ui/icons.jsx";
-import { useToast } from "./ui/toast.jsx";
+import { toast } from "sonner";
 
 export default function SchedulerControl() {
   const [lastRun, setLastRun] = useState(null);
   const [nextRun, setNextRun] = useState(null);
   const [lastError, setLastError] = useState(null);
-  const { addToast } = useToast();
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -27,15 +26,13 @@ export default function SchedulerControl() {
   }, []);
 
   const runNow = async () => {
-    addToast({
-      title: "Running scheduler...",
-      variant: "info",
-    });
+    toast.message("Running scheduler...");
     const res = await api.runSchedulerNow();
-    addToast({
-      title: res.ok ? "Scheduler run completed" : "Scheduler run failed",
-      variant: res.ok ? "success" : "error",
-    });
+    if (res.ok) {
+      toast.success("Scheduler run completed");
+    } else {
+      toast.error("Scheduler run failed");
+    }
     if (res.ok) setLastRun(new Date().toISOString());
   };
 

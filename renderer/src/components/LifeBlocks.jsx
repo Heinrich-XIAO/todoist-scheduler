@@ -15,7 +15,7 @@ import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Trash } from "./ui/icons.jsx";
 import { ArrowLeft } from "./ui/icons.jsx";
-import { useToast } from "./ui/toast.jsx";
+import { toast } from "sonner";
 
 const DAYS = [
   { key: "mon", label: "M" },
@@ -49,7 +49,6 @@ export default function LifeBlocks() {
     sun: false,
   });
   const [available, setAvailable] = useState(false);
-  const { addToast } = useToast();
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -91,24 +90,15 @@ export default function LifeBlocks() {
 
   const onAdd = async () => {
     if (!start || !end) {
-      addToast({
-        title: "Start and end time required.",
-        variant: "warning",
-      });
+      toast.warning("Start and end time required.");
       return;
     }
     if (type === "one_off" && !date) {
-      addToast({
-        title: "Date required for one-off blocks.",
-        variant: "warning",
-      });
+      toast.warning("Date required for one-off blocks.");
       return;
     }
     if (type === "weekly" && !Object.values(days).some(Boolean)) {
-      addToast({
-        title: "Pick at least one weekday.",
-        variant: "warning",
-      });
+      toast.warning("Pick at least one weekday.");
       return;
     }
 

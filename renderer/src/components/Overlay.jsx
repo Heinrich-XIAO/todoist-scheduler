@@ -4,7 +4,7 @@ import { Button } from "./ui/button.jsx";
 import { ArrowDownRight, Calendar, Clock } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
 import { PostponeModal } from "./PostponeModal.jsx";
-import { useToast } from "./ui/toast.jsx";
+import { toast } from "sonner";
 
 function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -32,7 +32,6 @@ export default function Overlay() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const { addToast } = useToast();
 
   useEffect(() => {
     let mounted = true;
@@ -158,11 +157,11 @@ export default function Overlay() {
         estimatedMinutes: task.estimatedMinutes || 30,
       });
     }
-    addToast({
-      title: result.approved ? "Snoozed" : "Snooze denied",
-      description: result.message,
-      variant: result.approved ? "success" : "warning",
-    });
+    if (result.approved) {
+      toast.success("Snoozed", { description: result.message });
+    } else {
+      toast.warning("Snooze denied", { description: result.message });
+    }
     setJustificationOpen(false);
     setReason("");
   };
@@ -213,22 +212,16 @@ export default function Overlay() {
         hour: '2-digit', 
         minute: '2-digit' 
       });
-      addToast({
-        title: "Task postponed",
+      toast.success("Task postponed", {
         description: `Postponed to ${formatted} - scheduler will not move it`,
-        variant: "success",
       });
     } else if (result.sleep) {
-      addToast({
-        title: "Sleep mode enabled",
+      toast.success("Sleep mode enabled", {
         description: "Tasks will resume tomorrow",
-        variant: "success",
       });
     } else {
-      addToast({
-        title: "Task postponed",
+      toast.success("Task postponed", {
         description: "Postponed 30 minutes - next task queued",
-        variant: "success",
       });
     }
     resetPostponeModal();
@@ -284,65 +277,68 @@ export default function Overlay() {
       />
       {mode === "corner" ? (
           <div 
-            className={`h-full w-full border border-zinc-700 rounded-2xl flex items-center px-4 relative z-10 cursor-pointer ${
-              isHovered ? '' : ''
-            }`}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            style={{ WebkitAppRegion: "no-drag" }}
+            className={`h-full w-full border border-zinc-700 rounded-2xl relative z-10`}
           >
             <div className="overlay-drag-handle" />
-            {!isHovered ? (
-              <>
-                <div className="text-sm font-semibold mr-4">{formatTime(elapsed)}</div>
-                <div className="flex-1 text-sm truncate">{task.content}</div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center gap-2 bg-transparent px-2 py-1 rounded">
-                <Button
-                  size="sm"
-                  variant="default"
-                  onClick={async () => {
-                    if (sessionStarted) {
-                      await api.stopTaskSession({
-                        taskId: task.id,
-                        elapsedSeconds: elapsed,
-                        mode,
-                      });
-                      setSessionStarted(false);
-                    }
-                    await api.completeTask(task.id);
-                  }}
-                >
-                  Complete
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={onSnooze}
-                  aria-label="Wait 5 min"
-                  title="Wait 5 min"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  onClick={() => {
-                    console.log("[Overlay] Opening postpone modal");
-                    if (mode === "corner") {
-                      setMode("full");
-                      api.setOverlayMode("full");
-                    }
-                    setPostponeOpen(true);
-                  }}
-                  aria-label="Postpone"
-                  title="Postpone"
-                >
-                  <Calendar className="h-5 w-5" />
-                </Button>
-              </div>
-            )}
+            <div
+              className={`overlay-corner-content flex items-center px-4 ${
+                isHovered ? "" : ""
+              }`}
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+            >
+              {!isHovered ? (
+                <>
+                  <div className="text-sm font-semibold mr-4">{formatTime(elapsed)}</div>
+                  <div className="flex-1 text-sm truncate">{task.content}</div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center gap-2 bg-transparent px-2 py-1 rounded">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={async () => {
+                      if (sessionStarted) {
+                        await api.stopTaskSession({
+                          taskId: task.id,
+                          elapsedSeconds: elapsed,
+                          mode,
+                        });
+                        setSessionStarted(false);
+                      }
+                      await api.completeTask(task.id);
+                    }}
+                  >
+                    Complete
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={onSnooze}
+                    aria-label="Wait 5 min"
+                    title="Wait 5 min"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    onClick={() => {
+                      console.log("[Overlay] Opening postpone modal");
+                      if (mode === "corner") {
+                        setMode("full");
+                        api.setOverlayMode("full");
+                      }
+                      setPostponeOpen(true);
+                    }}
+                    aria-label="Postpone"
+                    title="Postpone"
+                  >
+                    <Calendar className="h-5 w-5" />
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
       ) : (
         <div className="h-full w-full bg-ink/95 text-white flex flex-col items-center justify-center gap-6 relative z-10">

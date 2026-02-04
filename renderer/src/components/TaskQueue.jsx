@@ -9,17 +9,19 @@ import { PostponeModal } from "./PostponeModal.jsx";
 import { ArrowLeft, Calendar, Check } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
 import { Play, Repeat } from "lucide-react";
-import { useToast } from "./ui/toast.jsx";
+import { toast } from "sonner";
 
 function formatTimeDisplay(iso, isOverdue, isToday) {
   if (!iso) return "";
   const date = new Date(iso);
-  const now = new Date();
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(todayStart.getDate() - 1);
   const isSameDay = date.getDate() === todayStart.getDate() &&
     date.getMonth() === todayStart.getMonth() &&
     date.getFullYear() === todayStart.getFullYear();
+  const isYesterday = date >= yesterdayStart && date < todayStart;
   
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
@@ -28,11 +30,17 @@ function formatTimeDisplay(iso, isOverdue, isToday) {
   if (isSameDay) {
     return { text: timeStr, colorClass: isOverdue ? "text-red-400" : "text-emerald-400" };
   }
-  
-  // For non-today, show day name
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const dayName = days[date.getDay()];
-  const text = `${dayName} ${timeStr}`;
+
+  if (isYesterday) {
+    return { text: `Yesterday ${timeStr}`, colorClass: "text-amber-400" };
+  }
+
+  const dateStr = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const text = `${dateStr} ${timeStr}`;
   return { text, colorClass: "text-amber-400" };
 }
 
@@ -50,7 +58,6 @@ export default function TaskQueue() {
   const [postponeTask, setPostponeTask] = useState(null);
   const [postponeReason, setPostponeReason] = useState("");
   const [postponeWhen, setPostponeWhen] = useState("");
-  const { addToast } = useToast();
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -66,10 +73,7 @@ export default function TaskQueue() {
     const res = await api.getTaskQueue();
     if (!res?.ok) {
       if (!cached?.ok) {
-        addToast({
-          title: "Failed to load task queue.",
-          variant: "error",
-        });
+        toast.error("Failed to load task queue.");
       }
       return;
     }
@@ -92,10 +96,7 @@ export default function TaskQueue() {
     try {
       const res = await api.completeTask(taskId);
       if (!res?.ok && removedTask) {
-        addToast({
-          title: "Failed to complete task.",
-          variant: "error",
-        });
+        toast.error("Failed to complete task.");
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
           const next = [...prev];
@@ -106,10 +107,7 @@ export default function TaskQueue() {
       }
     } catch (err) {
       if (removedTask) {
-        addToast({
-          title: "Failed to complete task.",
-          variant: "error",
-        });
+        toast.error("Failed to complete task.");
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
           const next = [...prev];
@@ -162,28 +160,18 @@ export default function TaskQueue() {
             hour: '2-digit', 
             minute: '2-digit' 
           });
-          addToast({
-            title: "Task postponed",
+          toast.success("Task postponed", {
             description: `Postponed to ${formatted}`,
-            variant: "success",
           });
         } else if (res.sleep) {
-          addToast({
-            title: "Sleep mode enabled",
-            variant: "success",
-          });
+          toast.success("Sleep mode enabled");
         } else {
-          addToast({
-            title: "Task postponed",
+          toast.success("Task postponed", {
             description: "Postponed 30 minutes",
-            variant: "success",
           });
         }
       } else if (removedTask) {
-        addToast({
-          title: "Failed to postpone task.",
-          variant: "error",
-        });
+        toast.error("Failed to postpone task.");
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
           const next = [...prev];
@@ -194,10 +182,7 @@ export default function TaskQueue() {
       }
     } catch (err) {
       if (removedTask) {
-        addToast({
-          title: "Failed to postpone task.",
-          variant: "error",
-        });
+        toast.error("Failed to postpone task.");
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
           const next = [...prev];
@@ -220,28 +205,18 @@ export default function TaskQueue() {
         mode: "corner",
       });
       if (res?.ok) {
-        addToast({
-          title: "Session started",
+        toast.success("Session started", {
           description: task.content,
-          variant: "success",
         });
       } else if (res?.reason === "overlay-active") {
-        addToast({
-          title: "Overlay already active",
+        toast.warning("Overlay already active", {
           description: "Close it before starting another task.",
-          variant: "warning",
         });
       } else {
-        addToast({
-          title: "Failed to start task session.",
-          variant: "error",
-        });
+        toast.error("Failed to start task session.");
       }
     } catch (err) {
-      addToast({
-        title: "Failed to start task session.",
-        variant: "error",
-      });
+      toast.error("Failed to start task session.");
     } finally {
       setStartingId(null);
     }

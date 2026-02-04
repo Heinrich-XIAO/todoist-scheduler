@@ -36,3 +36,9 @@
 .overlay-drag-handle:active {
   cursor: grabbing;
 }
+
+.overlay-corner-content {
+  -webkit-app-region: no-drag;
+  height: 100%;
+  margin-left: 32px;
+}

@@ -4,14 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Button } from "./ui/button.jsx";
 import { Input } from "./ui/input.jsx";
 import { Alert } from "./ui/alert.jsx";
-import { useToast } from "./ui/toast.jsx";
+import { toast } from "sonner";
 
 export default function QuickStart() {
   const [taskName, setTaskName] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef(null);
-  const { addToast } = useToast();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -35,10 +34,7 @@ export default function QuickStart() {
     });
     setSubmitting(false);
     if (!res?.ok) {
-      addToast({
-        title: "Could not start the task.",
-        variant: "error",
-      });
+      toast.error("Could not start the task.");
     }
   };
 
