@@ -1030,7 +1030,8 @@ async function fetchTasks() {
 }
 
 function isDateOnly(task) {
-  return task.due && task.due.date && !task.due.datetime;
+  if (!task.due || !task.due.date || task.due.datetime) return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(task.due.date);
 }
 
 function getTaskDate(task) {
@@ -1038,7 +1039,10 @@ function getTaskDate(task) {
     return new Date(task.due.datetime);
   }
   if (task.due?.date) {
-    return new Date(`${task.due.date}T00:00:00`);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(task.due.date)) {
+      return new Date(`${task.due.date}T00:00:00`);
+    }
+    return new Date(task.due.date);
   }
   return null;
 }
