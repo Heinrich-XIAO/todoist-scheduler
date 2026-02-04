@@ -78,6 +78,10 @@ export default function Overlay() {
   const onSnooze = async () => {
     setStatus("");
     if (snoozeCount > 0) {
+      if (mode === "corner") {
+        setMode("full");
+        await api.setOverlayMode("full");
+      }
       setJustificationOpen(true);
       return;
     }
@@ -222,7 +226,7 @@ export default function Overlay() {
                 <div className="flex-1 text-sm truncate">{task.content}</div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center gap-2 bg-zinc-900/80 px-2 py-1 rounded">
+              <div className="flex-1 flex items-center justify-center gap-2 bg-transparent px-2 py-1 rounded">
                 <Button
                   size="sm"
                   variant="default"
@@ -254,6 +258,10 @@ export default function Overlay() {
                   variant="secondary"
                   onClick={() => {
                     console.log("[Overlay] Opening postpone modal");
+                    if (mode === "corner") {
+                      setMode("full");
+                      api.setOverlayMode("full");
+                    }
                     setPostponeOpen(true);
                   }}
                   aria-label="Postpone"

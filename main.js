@@ -424,6 +424,8 @@ function createOverlayWindow() {
     },
   });
   overlayWindow.setMenuBarVisibility(false);
+  // Keep the overlay visible across macOS Spaces/desktops.
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlayWindow.loadURL(`${getAppUrl()}?page=overlay`);
   overlayWindow.on("closed", () => {
     overlayWindow = null;
@@ -497,7 +499,7 @@ function applyCornerBounds() {
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
   overlayWindow.setSize(320, 70);
   const { width, height } = overlayWindow.getBounds();
-  const display = screen.getPrimaryDisplay();
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const x = Math.round((display.workAreaSize.width - width) / 2);
   const y = Math.round(display.workAreaSize.height - height - 40);
   overlayWindow.setPosition(x, y, false);
