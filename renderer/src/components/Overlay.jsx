@@ -209,9 +209,12 @@ export default function Overlay() {
       )}
       {mode === "corner" ? (
           <div 
-            className="h-full w-full bg-zinc-900/90 border border-zinc-700 rounded-2xl flex items-center px-4 relative z-10 cursor-pointer"
+            className={`h-full w-full border border-zinc-700 rounded-2xl flex items-center px-4 relative z-10 cursor-pointer transition-colors ${
+              isHovered ? 'bg-zinc-800' : 'bg-zinc-900/90'
+            }`}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
+            style={{ WebkitAppRegion: 'no-drag' }}
           >
             {!isHovered ? (
               <>
