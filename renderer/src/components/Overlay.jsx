@@ -368,45 +368,44 @@ export default function Overlay() {
       )}
 
       {(postponeOpen || justificationOpen) && (
-        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50">
-          <Card className="w-[520px]">
-            <CardHeader>
-              <CardTitle>
-                {justificationOpen ? "Why do you need another snooze?" : "Why are you postponing?"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-zinc-400 mb-4">
-                {justificationOpen
-                  ? "Be specific. The assistant will decide."
-                  : "Examples: 'tomorrow', 'next Monday', 'sleep', 'in 2 hours'. The AI will extract the time."}
-              </p>
+        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="w-[520px] bg-zinc-900 border border-zinc-700 rounded-xl p-6">
+            <h3 className="text-lg font-semibold mb-2">
+              {justificationOpen ? "Why do you need another snooze?" : "Why are you postponing?"}
+            </h3>
+            <p className="text-sm text-zinc-400 mb-4">
+              {justificationOpen
+                ? "Be specific. The assistant will decide."
+                : "Examples: 'tomorrow', 'next Monday', 'sleep', 'in 2 hours'. The AI will extract the time."}
+            </p>
+            <div className="mb-4">
+              <label className="text-sm text-zinc-300 mb-2 block">Reason / When:</label>
               <Input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Type your reason or when to postpone to"
-                className="mb-4"
+                placeholder="Type your reason or when to postpone to (e.g., tomorrow)"
+                className="w-full"
               />
-              <div className="flex justify-end gap-3">
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => {
-                    setPostponeOpen(false);
-                    setJustificationOpen(false);
-                    setReason("");
-                  }}
-                  aria-label="Cancel"
-                  title="Cancel"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-                <Button onClick={justificationOpen ? submitJustification : submitPostpone}>
-                  Submit
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setPostponeOpen(false);
+                  setJustificationOpen(false);
+                  setReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={justificationOpen ? submitJustification : submitPostpone}
+                disabled={!reason.trim()}
+              >
+                Submit
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
