@@ -7,7 +7,7 @@ import { Badge } from "./ui/badge.jsx";
 import { Input } from "./ui/input.jsx";
 import { ArrowLeft, Calendar, Check } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
-import { Repeat } from "lucide-react";
+import { Play, Repeat } from "lucide-react";
 
 function formatTimeDisplay(iso, isOverdue, isToday) {
   if (!iso) return "";
@@ -45,6 +45,7 @@ export default function TaskQueue() {
   const [tasks, setTasks] = useState([]);
   const [status, setStatus] = useState("");
   const [completingId, setCompletingId] = useState(null);
+  const [startingId, setStartingId] = useState(null);
   const [postponeTask, setPostponeTask] = useState(null);
   const [postponeReason, setPostponeReason] = useState("");
 
@@ -170,6 +171,27 @@ export default function TaskQueue() {
     }
   };
 
+  const startTaskSession = async (task) => {
+    if (!task?.id) return;
+    setStartingId(task.id);
+    try {
+      const res = await api.startTaskSession({
+        taskId: task.id,
+        taskName: task.content,
+        mode: "queue",
+      });
+      if (res?.ok) {
+        setStatus(`Started session for "${task.content}"`);
+      } else {
+        setStatus("Failed to start task session.");
+      }
+    } catch (err) {
+      setStatus("Failed to start task session.");
+    } finally {
+      setStartingId(null);
+    }
+  };
+
   useEffect(() => {
     loadQueue();
     const intervalId = setInterval(loadQueue, 120_000);
@@ -285,6 +307,16 @@ export default function TaskQueue() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => startTaskSession(task)}
+                        disabled={!api.isAvailable() || startingId === task.id}
+                        aria-label="Start task"
+                        title="Start task (no overlay)"
+                      >
+                        <Play className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => {
                           setPostponeTask(task);
                           setPostponeReason("");
@@ -355,6 +387,16 @@ export default function TaskQueue() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => startTaskSession(task)}
+                        disabled={!api.isAvailable() || startingId === task.id}
+                        aria-label="Start task"
+                        title="Start task (no overlay)"
+                      >
+                        <Play className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => {
                           setPostponeTask(task);
                           setPostponeReason("");
@@ -422,6 +464,16 @@ export default function TaskQueue() {
                            </span>
                          );
                        })()}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => startTaskSession(task)}
+                        disabled={!api.isAvailable() || startingId === task.id}
+                        aria-label="Start task"
+                        title="Start task (no overlay)"
+                      >
+                        <Play className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
