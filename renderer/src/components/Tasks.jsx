@@ -51,13 +51,41 @@ function priorityDot(priority) {
   return "bg-zinc-500";
 }
 
-export default function TaskQueue() {
+function getDurationBadge(description) {
+  try {
+    const parsed = JSON.parse(description || "");
+    if (parsed.duration) {
+      const isFixed = parsed.fixed === true;
+      return {
+        duration: parsed.duration,
+        isFixed,
+        label: isFixed ? "Fixed" : "Variable",
+        colorClass: isFixed ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-amber-500/20 text-amber-400 border-amber-500/30",
+      };
+    }
+  } catch {
+    // Not JSON, check for old format
+    const match = /(?:^|\s)(\d{1,3})m\b/.exec(description || "");
+    if (match) {
+      return {
+        duration: match[1] + "m",
+        isFixed: null,
+        label: null,
+        colorClass: null,
+      };
+    }
+  }
+  return null;
+}
+
+export default function Tasks() {
   const [tasks, setTasks] = useState([]);
   const [completingId, setCompletingId] = useState(null);
   const [startingId, setStartingId] = useState(null);
   const [postponeTask, setPostponeTask] = useState(null);
   const [postponeReason, setPostponeReason] = useState("");
   const [postponeWhen, setPostponeWhen] = useState("");
+  const [postponeSubmitting, setPostponeSubmitting] = useState(false);
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -122,7 +150,8 @@ export default function TaskQueue() {
   };
 
   const submitPostpone = async () => {
-    if (!postponeTask) return;
+    if (!postponeTask || postponeSubmitting) return;
+    setPostponeSubmitting(true);
     const taskId = postponeTask.id;
     let removedTask = null;
     let removedIndex = -1;
@@ -137,9 +166,6 @@ export default function TaskQueue() {
     const combinedReason = postponeWhen.trim()
       ? `${postponeReason.trim()} (${postponeWhen.trim()})`
       : postponeReason.trim();
-    setPostponeTask(null);
-    setPostponeReason("");
-    setPostponeWhen("");
     try {
       const res = await api.postponeTask({
         taskId,
@@ -165,13 +191,14 @@ export default function TaskQueue() {
           });
         } else if (res.sleep) {
           toast.success("Sleep mode enabled");
-        } else {
-          toast.success("Task postponed", {
-            description: "Postponed 30 minutes",
-          });
         }
-      } else if (removedTask) {
-        toast.error("Failed to postpone task.");
+        setPostponeTask(null);
+        setPostponeReason("");
+        setPostponeWhen("");
+      } else {
+        toast.error("Failed to postpone", {
+          description: res.error || "Could not postpone task",
+        });
         setTasks((prev) => {
           if (prev.find((task) => task.id === removedTask.id)) return prev;
           const next = [...prev];
@@ -191,6 +218,8 @@ export default function TaskQueue() {
           return next;
         });
       }
+    } finally {
+      setPostponeSubmitting(false);
     }
   };
 
@@ -273,7 +302,7 @@ export default function TaskQueue() {
           >
             <ArrowLeft />
           </Button>
-          <h1 className="text-3xl font-semibold mt-2">Task Queue</h1>
+          <h1 className="text-3xl font-semibold mt-2">Tasks</h1>
           <p className="text-zinc-400 mt-2">
             AI ordered (fixed first, variable last).
           </p>
@@ -316,24 +345,32 @@ export default function TaskQueue() {
                       <div className="text-sm font-medium flex items-center gap-2 truncate">
                         <span className={`h-2 w-2 rounded-full shrink-0 ${priorityDot(task.priority)}`} />
                         <span className="truncate">{task.content}</span>
-                      </div>
-                      {task.description && (
-                        <div className="text-xs text-zinc-400 mt-1 truncate">
-                          <MarkdownText text={task.description} />
-                        </div>
-                      )}
-                    </div>
-                     <div className="flex items-center gap-2 shrink-0">
-                       {(() => {
-                         const timeDisplay = formatTimeDisplay(task.due, true, false);
-                         return (
-                           <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
-                             {timeDisplay.text}
-                             {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
-                           </span>
-                         );
-                       })()}
-                      <Button
+                       </div>
+                     </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                         {(() => {
+                           const timeDisplay = formatTimeDisplay(task.due, true, false);
+                           const durationBadge = getDurationBadge(task.description);
+                          return (
+                            <>
+                              <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
+                                {timeDisplay.text}
+                                {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
+                              </span>
+                              {durationBadge && (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs px-1.5 py-0.5 ${durationBadge.colorClass || "text-zinc-400"}`}
+                                  title={durationBadge.isFixed !== null ? `${durationBadge.label} length task` : undefined}
+                                >
+                                  {durationBadge.duration}
+                                  {durationBadge.label && <span className="ml-1 opacity-70">({durationBadge.label})</span>}
+                                </Badge>
+                              )}
+                            </>
+                          );
+                        })()}
+                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => startTaskSession(task)}
@@ -398,33 +435,41 @@ export default function TaskQueue() {
                       <div className="text-sm font-medium flex items-center gap-2 truncate">
                         <span className={`h-2 w-2 rounded-full shrink-0 ${priorityDot(task.priority)}`} />
                         <span className="truncate">{task.content}</span>
-                      </div>
-                      {task.description && (
-                        <div className="text-xs text-zinc-400 mt-1 truncate">
-                          <MarkdownText text={task.description} />
-                        </div>
-                      )}
-                    </div>
-                     <div className="flex items-center gap-2 shrink-0">
-                       {(() => {
-                         const timeDisplay = formatTimeDisplay(task.due, false, true);
-                         return (
-                           <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
-                             {timeDisplay.text}
-                             {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
-                           </span>
-                         );
-                       })()}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => startTaskSession(task)}
-                        disabled={!api.isAvailable() || startingId === task.id}
-                        aria-label="Start task"
-                        title="Start task"
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
+                       </div>
+                     </div>
+                       <div className="flex items-center gap-2 shrink-0">
+                         {(() => {
+                           const timeDisplay = formatTimeDisplay(task.due, false, true);
+                           const durationBadge = getDurationBadge(task.description);
+                          return (
+                            <>
+                              <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
+                                {timeDisplay.text}
+                                {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
+                              </span>
+                              {durationBadge && (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs px-1.5 py-0.5 ${durationBadge.colorClass || "text-zinc-400"}`}
+                                  title={durationBadge.isFixed !== null ? `${durationBadge.label} length task` : undefined}
+                                >
+                                  {durationBadge.duration}
+                                  {durationBadge.label && <span className="ml-1 opacity-70">({durationBadge.label})</span>}
+                                </Badge>
+                              )}
+                            </>
+                          );
+                        })()}
+                       <Button
+                         variant="ghost"
+                         size="icon"
+                         onClick={() => startTaskSession(task)}
+                         disabled={!api.isAvailable() || startingId === task.id}
+                         aria-label="Start task"
+                         title="Start task"
+                       >
+                         <Play className="h-4 w-4" />
+                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -480,47 +525,55 @@ export default function TaskQueue() {
                       <div className="text-sm font-medium flex items-center gap-2 truncate">
                         <span className={`h-2 w-2 rounded-full shrink-0 ${priorityDot(task.priority)}`} />
                         <span className="truncate">{task.content}</span>
-                      </div>
-                      {task.description && (
-                        <div className="text-xs text-zinc-400 mt-1 truncate">
-                          <MarkdownText text={task.description} />
-                        </div>
-                      )}
-                    </div>
-                     <div className="flex items-center gap-2 shrink-0">
-                       {(() => {
-                         const timeDisplay = formatTimeDisplay(task.due, false, false);
-                         return (
-                           <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
-                             {timeDisplay.text}
-                             {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
-                           </span>
-                         );
-                       })()}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => startTaskSession(task)}
-                        disabled={!api.isAvailable() || startingId === task.id}
-                        aria-label="Start task"
-                        title="Start task"
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setPostponeTask(task);
-                          setPostponeReason("");
-                          setPostponeWhen("");
-                        }}
-                        disabled={!api.isAvailable()}
-                        aria-label="Postpone task"
-                        title="Postpone"
-                      >
-                        <Calendar />
-                      </Button>
+                       </div>
+                     </div>
+                       <div className="flex items-center gap-2 shrink-0">
+                         {(() => {
+                           const timeDisplay = formatTimeDisplay(task.due, false, false);
+                           const durationBadge = getDurationBadge(task.description);
+                          return (
+                            <>
+                              <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
+                                {timeDisplay.text}
+                                {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
+                              </span>
+                              {durationBadge && (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs px-1.5 py-0.5 ${durationBadge.colorClass || "text-zinc-400"}`}
+                                  title={durationBadge.isFixed !== null ? `${durationBadge.label} length task` : undefined}
+                                >
+                                  {durationBadge.duration}
+                                  {durationBadge.label && <span className="ml-1 opacity-70">({durationBadge.label})</span>}
+                                </Badge>
+                              )}
+                            </>
+                          );
+                        })()}
+                       <Button
+                         variant="ghost"
+                         size="icon"
+                         onClick={() => startTaskSession(task)}
+                         disabled={!api.isAvailable() || startingId === task.id}
+                         aria-label="Start task"
+                         title="Start task"
+                       >
+                         <Play className="h-4 w-4" />
+                       </Button>
+                       <Button
+                         variant="ghost"
+                         size="icon"
+                         onClick={() => {
+                           setPostponeTask(task);
+                           setPostponeReason("");
+                           setPostponeWhen("");
+                         }}
+                         disabled={!api.isAvailable()}
+                         aria-label="Postpone task"
+                         title="Postpone"
+                       >
+                         <Calendar />
+                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -548,11 +601,13 @@ export default function TaskQueue() {
           onReasonChange={setPostponeReason}
           when={postponeWhen}
           onWhenChange={setPostponeWhen}
+          submitting={postponeSubmitting}
           showWhen
           onCancel={() => {
             setPostponeTask(null);
             setPostponeReason("");
             setPostponeWhen("");
+            setPostponeSubmitting(false);
           }}
           onSubmit={submitPostpone}
           submitLabel="Postpone"

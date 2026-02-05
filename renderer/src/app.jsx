@@ -5,7 +5,7 @@ import Home from "./components/Home.jsx";
 import DaemonConfig from "./components/DaemonConfig.jsx";
 import SchedulerControl from "./components/SchedulerControl.jsx";
 import UsageData from "./components/UsageData.jsx";
-import TaskQueue from "./components/TaskQueue.jsx";
+import Tasks from "./components/Tasks.jsx";
 import QuickStart from "./components/QuickStart.jsx";
 import { Toaster } from "./components/ui/sonner.jsx";
 
@@ -37,14 +37,14 @@ export default function App() {
     if (route === "daemons") return <DaemonConfig />;
     if (route === "scheduler") return <SchedulerControl />;
     if (route === "data") return <UsageData />;
-    if (route === "queue") return <TaskQueue />;
+    if (route === "queue") return <Tasks />;
     if (route === "quick") return <QuickStart />;
     return <Home />;
   }, [route]);
 
   return (
     <>
-      <div className="min-h-screen bg-ink text-white">{page}</div>
+      <div className={`min-h-screen ${route === "overlay" ? "bg-transparent" : "bg-ink"} text-white`}>{page}</div>
       <Toaster position="top-right" richColors />
     </>
   );

@@ -100,6 +100,19 @@ Mistakes
 
 - If you make a mistake while working in this repo, document it here in its own subsection.
 
+## Postpone Bug (Fixed)
+
+**Issue:** After clicking postpone with a custom date (AI-parsed), the task would come back after a bit.
+
+**Root cause:** When a task was custom-postponed with a due date, it was:
+1. Set to that due date in Todoist with a `dontchangetime` label
+2. Added to overlay state with `snoozed: true` and a 30-minute snooze window
+3. Then checkSnoozedTasks would re-add it to the overlay after 30 minutes
+
+**Fix:** Delete the task from `active_tasks` in overlay state when it's custom-postponed, since it's now handled by the scheduler. See main.js:2466-2468.
+
+**How to test:** Postpone a task with a custom date (e.g., "postpone until 3pm") and verify it doesn't reappear in the overlay.
+
 Future config
 
 - We may add `config.toml` later; avoid adding it until requested.

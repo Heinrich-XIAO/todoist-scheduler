@@ -15,7 +15,7 @@ const cards = [
     route: "/?page=data",
   },
   {
-    title: "Task Queue",
+    title: "Tasks",
     description: "AI-ordered queue for today and upcoming tasks.",
     route: "/?page=queue",
   },

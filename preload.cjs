@@ -72,6 +72,7 @@ if (isE2E) {
       { type: "scheduler_run_auto", at: makeIsoOffset(-15), task_name: "" },
     ],
   };
+  const mockOverlayCornerAnchor = { x: 600, y: 900, width: 320, height: 70 };
 
   contextBridge.exposeInMainWorld("todoist", {
     getLifeBlocks: async () => lifeBlocks,
@@ -144,6 +145,9 @@ if (isE2E) {
     onOverlayMode: (handler) => {
       overlayHandler = handler;
     },
+    onOverlayCornerAnchor: (handler) => {
+      handler(mockOverlayCornerAnchor);
+    },
   });
 } else {
   contextBridge.exposeInMainWorld("todoist", {
@@ -180,5 +184,7 @@ if (isE2E) {
     },
     onOverlayMode: (handler) =>
       ipcRenderer.on("overlay-mode", (_event, mode) => handler(mode)),
+    onOverlayCornerAnchor: (handler) =>
+      ipcRenderer.on("overlay-corner-anchor", (_event, anchor) => handler(anchor)),
   });
 }

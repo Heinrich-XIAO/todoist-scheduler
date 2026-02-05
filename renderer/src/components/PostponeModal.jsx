@@ -15,6 +15,7 @@ export function PostponeModal({
   onSubmit,
   submitLabel = "Submit",
   disabled = false,
+  submitting = false,
   reasonLabel = "Reason:",
   reasonPlaceholder = "Why are you postponing?",
   whenLabel = "Postpone to:",
@@ -56,7 +57,10 @@ export function PostponeModal({
           <Button variant="secondary" onClick={onCancel}>
             Cancel
           </Button>
-          <Button onClick={onSubmit} disabled={disabled}>
+          <Button onClick={onSubmit} disabled={disabled || submitting}>
+            {submitting && (
+              <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
+            )}
             {submitLabel}
           </Button>
         </div>

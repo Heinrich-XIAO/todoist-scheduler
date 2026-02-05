@@ -29,6 +29,7 @@ const fallback = {
   startQuickTask: async () => ({ ok: false }),
   closeQuickWindow: async () => ({ ok: false }),
   onOverlayMode: () => {},
+  onOverlayCornerAnchor: () => {},
 };
 
 const current = () => window.todoist || fallback;
@@ -72,6 +73,7 @@ const api = {
   startQuickTask: (payload) => current().startQuickTask(payload),
   closeQuickWindow: () => current().closeQuickWindow(),
   onOverlayMode: (handler) => current().onOverlayMode(handler),
+  onOverlayCornerAnchor: (handler) => current().onOverlayCornerAnchor(handler),
 };
 
 export default api;

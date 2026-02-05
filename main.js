@@ -195,6 +195,8 @@ let overlayWindow = null;
 let quickWindow = null;
 let overlayTask = null;
 let overlayMode = "full";
+let overlayCornerAnchor = null;
+const OVERLAY_CORNER_SNAP_PX = 5;
 let schedulerInstance = null;
 let schedulerStatus = { lastRun: null, nextRun: null, lastError: null };
 let notificationCount = 0;
@@ -431,10 +433,9 @@ function createOverlayWindow() {
   overlayWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    fullscreen: true,
     frame: false,
     alwaysOnTop: true,
-    backgroundColor: "#0b0b0b",
+    transparent: true,
     skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -533,6 +534,7 @@ function resetOverlay(reason) {
   overlayWindow = null;
   overlayTask = null;
   overlayMode = "full";
+  overlayCornerAnchor = null;
 }
 
 function describeOverlayWindow() {
@@ -552,6 +554,14 @@ function describeOverlayWindow() {
   }
 }
 
+function broadcastOverlayCornerAnchor() {
+  if (!overlayWindow) return;
+  overlayWindow.webContents.send(
+    "overlay-corner-anchor",
+    overlayMode === "corner" ? overlayCornerAnchor : null
+  );
+}
+
 function applyCornerBounds() {
   if (!overlayWindow) return;
   overlayWindow.setAlwaysOnTop(true, "screen-saver");
@@ -564,6 +574,8 @@ function applyCornerBounds() {
   const x = Math.round((display.workAreaSize.width - width) / 2);
   const y = Math.round(display.workAreaSize.height - height - 40);
   overlayWindow.setPosition(x, y, false);
+  overlayCornerAnchor = { x, y, width, height };
+  broadcastOverlayCornerAnchor();
 }
 
 function setOverlayMode(mode) {
@@ -574,6 +586,7 @@ function setOverlayMode(mode) {
     activeSessions.set(overlayTask.id, { ...current, mode });
   }
   if (mode === "corner") {
+    overlayWindow.setBackgroundColor("#00000000");
     if (overlayWindow.isFullScreen()) {
       overlayWindow.once("leave-full-screen", applyCornerBounds);
       overlayWindow.setFullScreen(false);
@@ -581,6 +594,7 @@ function setOverlayMode(mode) {
       applyCornerBounds();
     }
   } else {
+    overlayWindow.setBackgroundColor("#0b0b0b");
     overlayWindow.setResizable(true);
     overlayWindow.setMinimumSize(0, 0);
     overlayWindow.setMaximumSize(10000, 10000);
@@ -588,6 +602,7 @@ function setOverlayMode(mode) {
     overlayWindow.setAlwaysOnTop(true, "screen-saver");
   }
   overlayWindow.webContents.send("overlay-mode", mode);
+  broadcastOverlayCornerAnchor();
 }
 
 function isSameDay(a, b) {
@@ -1064,12 +1079,38 @@ function hasDontChangeTime(task) {
 }
 
 function parseDuration(description) {
+  // Try JSON format first
+  try {
+    const parsed = JSON.parse(description || "");
+    if (parsed.duration) {
+      const match = /(\d{1,3})m/.exec(parsed.duration);
+      if (match) {
+        const minutes = parseInt(match[1], 10);
+        if (!Number.isFinite(minutes)) return null;
+        const rounded = Math.round(minutes / INTERVAL_MINUTES) * INTERVAL_MINUTES;
+        return Math.max(5, rounded);
+      }
+    }
+  } catch {
+    // Not JSON, fall back to old format
+  }
+
+  // Old plain text format
   const match = /(?:^|\s)(\d{1,3})m\b/.exec(description || "");
   if (!match) return null;
   const minutes = parseInt(match[1], 10);
   if (!Number.isFinite(minutes)) return null;
   const rounded = Math.round(minutes / INTERVAL_MINUTES) * INTERVAL_MINUTES;
   return Math.max(5, rounded);
+}
+
+function parseFixedLength(description) {
+  try {
+    const parsed = JSON.parse(description || "");
+    return parsed.fixed;
+  } catch {
+    return undefined;
+  }
 }
 
 const QUICK_KEYWORDS = [
@@ -1123,18 +1164,44 @@ function estimateDurationHeuristic(task, description) {
   return 30;
 }
 
-function addDurationToDescription(description, minutes) {
-  if (!description) return `${minutes}m`;
-  if (/\d{1,3}m\b/.test(description)) return description;
-  return `${description.trim()} ${minutes}m`;
+function addDurationToDescription(description, minutes, isFixed = false) {
+  // Check if description is already in JSON format with fixed field
+  try {
+    const parsed = JSON.parse(description || "");
+    if (parsed.duration !== undefined) {
+      parsed.duration = `${minutes}m`;
+      parsed.fixed = isFixed;
+      return JSON.stringify(parsed);
+    }
+  } catch {
+    // Not JSON, proceed to create new JSON
+  }
+
+  // Create new JSON format
+  return JSON.stringify({ duration: `${minutes}m`, fixed: isFixed });
 }
 
 async function estimateDuration(task, description) {
   const parsed = parseDuration(description);
-  if (parsed) return { minutes: parsed, userSpecified: true };
+  const fixed = parseFixedLength(description);
+
+  if (parsed && fixed !== undefined) {
+    return { minutes: parsed, isFixed: fixed, userSpecified: true };
+  }
+
+  if (parsed) {
+    // Has duration but no fixed classification, need to classify
+    const isFixed = await isFixedLengthTask(task, description);
+    return { minutes: parsed, isFixed, userSpecified: true };
+  }
+
   const ai = await estimateMinutes(task, description);
-  if (ai) return { minutes: ai, userSpecified: false };
-  return { minutes: estimateDurationHeuristic(task, description), userSpecified: false };
+  if (ai) {
+    const isFixed = await isFixedLengthTask(task, description);
+    return { minutes: ai, isFixed, userSpecified: false };
+  }
+
+  return { minutes: estimateDurationHeuristic(task, description), isFixed: false, userSpecified: false };
 }
 
 async function estimateMinutes(task, description) {
@@ -1146,7 +1213,8 @@ async function estimateMinutes(task, description) {
   const content = await openrouterChat(
     "You estimate task duration. Reply only with a number.",
     prompt,
-    8
+    8,
+    "latency"
   );
   if (!content) return null;
   const match = content.match(/\d+/);
@@ -1165,7 +1233,8 @@ async function estimatePriority(task, description) {
   const content = await openrouterChat(
     "You assign Todoist priorities. Prioritize school projects. Reply only with 4 or 2.",
     prompt,
-    6
+    6,
+    "latency"
   );
   if (!content) return null;
   const match = content.match(/\d+/);
@@ -1184,15 +1253,38 @@ async function isDailyActivity(task, description) {
   const content = await openrouterChat(
     "You determine if tasks are daily activities. Reply only YES or NO.",
     prompt,
-    6
+    6,
+    "latency"
   );
   if (!content) return false;
   return content.toUpperCase().includes("YES") && !content.toUpperCase().includes("NO");
 }
 
+async function isFixedLengthTask(task, description) {
+  if (!OPENROUTER_KEY) return false;
+  const prompt =
+    `Task: ${task}\n` +
+    `Description: ${description}\n\n` +
+    "Classify this task as 'fixed' or 'variable' length.\n" +
+    "FIXED: Clear endpoints like meetings, calls, appointments, exams, watching specific movies, completing forms\n" +
+    "VARIABLE: Variable duration like studying, coding practice, open-ended writing, reading book chapters, research, skill practice\n\n" +
+    "Reply with ONLY one word: FIXED or VARIABLE.";
+  const content = await openrouterChat(
+    "You classify task duration type. Reply only FIXED or VARIABLE.",
+    prompt,
+    6,
+    "latency"
+  );
+  if (!content) return false;
+  const upper = content.toUpperCase().trim();
+  const isFixed = upper === "FIXED" || (upper.includes("FIXED") && !upper.includes("VARIABLE"));
+  log(`isFixedLengthTask: task="${task}" classification=${isFixed ? "FIXED" : "VARIABLE"} (response: "${content}")`);
+  return isFixed;
+}
+
 async function parseNaturalLanguageDate(text) {
   if (!OPENROUTER_KEY || !text) {
-    log(`parseNaturalLanguageDate: skipped (OPENROUTER_KEY=${OPENROUTER_KEY ? "set" : "missing"}, text=${text ? "present" : "empty"})`);
+    log(`parseNaturalLanguageDate: skipped (OPENROUTER_KEY=${OPENROUTER_KEY ? "set" : "missing"}, text=${text ? "present" : "empty"}`);
     return null;
   }
 
@@ -1204,17 +1296,26 @@ async function parseNaturalLanguageDate(text) {
     `parseNaturalLanguageDate: input="${text}" currentDate=${currentDateStr} currentTime=${currentTimeStr}`
   );
 
+  const dowNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const currentDow = dowNames[now.getDay()];
   const prompt =
+    `Current day: ${currentDow}\n` +
     `Current date: ${currentDateStr}\n` +
     `Current time: ${currentTimeStr}\n\n` +
     `Parse this text and extract a specific date/time: "${text}"\n\n` +
-    "Reply with ONLY an ISO 8601 datetime string (e.g., 2024-01-15T14:30:00) or 'NONE' if no date found.";
+    `Rules:\n` +
+    `- Days: "saturday", "tomorrow", "monday", "sunday", etc. -> Find the NEXT occurrence of that day\n` +
+    `- Times: always use start times: 16:15 (4:15 PM) for weekdays Mon-Fri, 09:00 (9:00 AM) for weekends Sat-Sun\n` +
+    `- Examples:\n` +
+    `  * "saturday" -> next Saturday at 09:00\n` +
+    `  * "tomorrow" -> tomorrow at 16:15 (or 09:00 if tomorrow is weekend)\n` +
+    `  * "monday" -> next Monday at 16:15\n` +
+    `  * "sunday" -> next Sunday at 09:00\n` +
+    `  * "3pm" -> today if time is later, otherwise tomorrow (use appropriate start time)\n` +
+    `- NEVER return 00:00:00 or date-only. Always include the time.\n` +
+    `- Reply ONLY with ISO 8601 datetime (e.g., 2024-01-15T16:15:00) or 'NONE' if no date\n`;
 
-  const content = await openrouterChat(
-    "You parse natural language dates. Reply only with ISO datetime or NONE.",
-    prompt,
-    30
-  );
+  const content = await openrouterChat("", prompt, 1000, "latency");
 
   if (!content) {
     log("parseNaturalLanguageDate: empty response from OpenRouter");
@@ -1231,25 +1332,16 @@ async function parseNaturalLanguageDate(text) {
   if (isoMatch) {
     const value = isoMatch[0];
     log(`parseNaturalLanguageDate: parsed ISO="${value}" from raw="${content}"`);
-    if (value.includes("T")) return value;
-    const parsed = new Date(`${value}T00:00:00`);
-    const base = startTimeFor(parsed);
-    const fallback = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(
-      base.getDate()
-    ).padStart(2, "0")}T${String(base.getHours()).padStart(2, "0")}:${String(base.getMinutes()).padStart(
-      2,
-      "0"
-    )}:${String(base.getSeconds()).padStart(2, "0")}`;
-    log(`parseNaturalLanguageDate: date-only -> startTimeFor -> "${fallback}"`);
-    return fallback;
+    return value;
   }
 
   log(`parseNaturalLanguageDate: no ISO match in response="${content}"`);
   return null;
 }
 
-async function openrouterChat(system, prompt, maxTokens) {
+async function openrouterChat(system, prompt, maxTokens, sortBy = "latency") {
   try {
+    const startTime = Date.now();
     const res = await fetch(`${OPENROUTER_PROXY.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: {
@@ -1259,27 +1351,52 @@ async function openrouterChat(system, prompt, maxTokens) {
         "X-Title": "Todoist Scheduler",
       },
       body: JSON.stringify({
-        model: "moonshotai/kimi-k2-5",
+        model: "openai/gpt-4o-mini",
         messages: [
           { role: "system", content: system },
           { role: "user", content: prompt },
         ],
         max_tokens: maxTokens,
-        temperature: 0.2,
+        temperature: 0,
+        provider: {
+          "name": "OpenAI",
+          "allow_fallbacks": false,
+        },
       }),
     });
+    const endTime = Date.now();
+    const latencyMs = endTime - startTime;
+
     if (!res.ok) {
       const text = await res.text();
       log(
-        `OpenRouter error ${res.status}: url=${res.url} response=${text}`
+        `OpenRouter error ${res.status}: url=${res.url} latency=${latencyMs}ms response=${text}`
       );
       return null;
     }
     const data = await res.json();
-    if (!data?.choices?.[0]?.message?.content) {
-      log(`OpenRouter response missing content: ${JSON.stringify(data).slice(0, 500)}`);
+
+let responseText = data?.choices?.[0]?.message?.content || "";
+  
+  if (!responseText) {
+    const fullDataStr = JSON.stringify(data?.choices?.[0]?.message || {});
+    const isoMatches = fullDataStr.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+    if (isoMatches) {
+      const iso = isoMatches[0];
+      responseText = `${iso}:00`;
+      log(`parseNaturalLanguageDate: extracted ISO from reasoning field -> "${responseText}"`);
     }
-    return data.choices?.[0]?.message?.content || null;
+  }
+  
+  const tokenCount = data?.usage?.completion_tokens || 0;
+  const throughput = tokenCount > 0 ? (tokenCount / (latencyMs / 1000)).toFixed(2) : 0;
+
+  log(`OpenRouter timing: latency=${latencyMs}ms tokens=${tokenCount} throughput=${throughput}tok/s sort=${sortBy}`);
+
+  if (!responseText) {
+    log(`OpenRouter response missing content: ${JSON.stringify(data).slice(0, 500)}`);
+  }
+  return responseText || null;
   } catch (err) {
     log(`OpenRouter request failed: ${err}`);
     return null;
@@ -1352,7 +1469,8 @@ async function aiOrderQueue(tasks) {
   const content = await openrouterChat(
     "You order tasks. Reply only with JSON array of ids.",
     prompt,
-    200
+    200,
+    "throughput"
   );
   const ids = safeParseJsonArray(content);
   if (!ids || ids.length === 0) return null;
@@ -1387,6 +1505,11 @@ function sortVariableTasks(tasks, rankMap) {
 }
 
 function isFixedTask(task) {
+  const fixed = parseFixedLength(task.description || "");
+  // Fall back to old behavior if JSON not available
+  if (fixed !== undefined) {
+    return fixed;
+  }
   return Number.isFinite(task.duration_minutes) && task.duration_minutes > 0;
 }
 
@@ -1810,7 +1933,7 @@ class Scheduler {
 
     for (const task of badTasks) {
       const desc = task.description || "";
-      const { minutes, userSpecified } = await estimateDuration(task.content || "", desc);
+      const { minutes, isFixed, userSpecified } = await estimateDuration(task.content || "", desc);
       const numBlocks = Math.max(1, Math.ceil(minutes / INTERVAL_MINUTES));
 
       let timeSlot = null;
@@ -1833,7 +1956,7 @@ class Scheduler {
 
       const payload = { due_datetime: timeSlot.toISOString() };
       if (!userSpecified) {
-        payload.description = addDurationToDescription(desc, minutes);
+        payload.description = addDurationToDescription(desc, minutes, isFixed);
       }
       await todoistFetch(`/tasks/${task.id}`, {
         method: "POST",
@@ -1887,7 +2010,7 @@ async function classifyWithAI(taskText) {
     "Is this task done primarily on a computer/phone/digital device, or is it a physical/offline task?\n\n" +
     `Task: "${taskText}"\n\n` +
     'Answer with just ONE word: "COMPUTER" or "OFFLINE".';
-  const content = await openrouterChat("Reply only COMPUTER or OFFLINE.", prompt, 10);
+  const content = await openrouterChat("Reply only COMPUTER or OFFLINE.", prompt, 10, "latency");
   if (!content) return true;
   const upper = content.toUpperCase();
   return upper.includes("COMPUTER");
@@ -1896,7 +2019,7 @@ async function classifyWithAI(taskText) {
 async function isSleepReason(reason) {
   if (!OPENROUTER_KEY) return isSleepFallback(reason);
   const prompt = `Reason: ${reason}\n\nReply YES if sleep-related, otherwise NO.`;
-  const content = await openrouterChat("Reply only YES or NO.", prompt, 6);
+  const content = await openrouterChat("Reply only YES or NO.", prompt, 6, "latency");
   if (!content) return isSleepFallback(reason);
   const upper = content.toUpperCase();
   return upper.includes("YES") && !upper.includes("NO");
@@ -1937,7 +2060,8 @@ async function checkJustification(task, description, justification) {
   const content = await openrouterChat(
     "You are a productivity assistant. Reply only YES or NO.",
     prompt,
-    8
+    8,
+    "latency"
   );
   if (!content) return { approved: true, message: "AI check failed - snooze approved" };
   const upper = content.toUpperCase();
@@ -2359,14 +2483,16 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
   );
   stopSession(taskId, elapsedSeconds, mode);
   
-  // STEP 1: First check if the reason is valid/sleep-related
-  const isSleep = await isSleepReason(reason);
+  // Run sleep detection + date parsing in parallel to reduce UI wait.
+  const sleepPromise = isSleepReason(reason);
+  const datePromise = reason ? parseNaturalLanguageDate(reason) : Promise.resolve(null);
+  const [isSleep, parsedDate] = await Promise.all([sleepPromise, datePromise]);
   log(`postpone-task: isSleep=${isSleep}`);
   
-  // STEP 2: Then try to parse a date from the reason using AI
+  // Only honor a parsed date if it's not sleep-related.
   let customDueDateTime = null;
-  if (reason && !isSleep) {
-    customDueDateTime = await parseNaturalLanguageDate(reason);
+  if (!isSleep) {
+    customDueDateTime = parsedDate;
     if (customDueDateTime) {
       log(`AI parsed date from "${reason}": ${customDueDateTime}`);
     } else {
@@ -2374,10 +2500,15 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
     }
   }
   
-  // If AI parsed a date, update the task in Todoist with that time
+  // If no valid date parsed and not sleep mode, return error
+  if (!customDueDateTime && !isSleep) {
+    log(`postpone-task: no valid date parsed and not sleep mode`);
+    return { ok: false, error: "Please specify when to postpone (e.g., 'tomorrow', '3pm')" };
+  }
+
+  // If AI parsed a date or sleep mode, update Todoist or overlay state
   if (customDueDateTime) {
     try {
-      // Add the dontchangetime label to prevent scheduler from moving it
       const labels = ["dontchangetime"];
       log(
         `postpone-task: updating Todoist due_datetime=${customDueDateTime} labels=${JSON.stringify(labels)}`
@@ -2396,6 +2527,16 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
         reason: reason,
         parsed_date: customDueDateTime,
       });
+      
+      const state = loadOverlayState();
+      if (state.active_tasks?.[taskId]) delete state.active_tasks[taskId];
+      saveOverlayState(state);
+      
+      activeOverlays.delete(taskId);
+      overlayTask = null;
+      if (overlayWindow) overlayWindow.close();
+      
+      return { ok: true, sleep: false, customPostponed: true, parsedDate: customDueDateTime };
     } catch (err) {
       log(`Failed to postpone task to custom time: ${err}`);
       return { ok: false, error: String(err) };
@@ -2408,43 +2549,24 @@ ipcMain.handle("postpone-task", async (_event, payload) => {
     mode,
     estimated_minutes: estimatedMinutes || 0,
   });
+  
+  const snoozeUntil = nextStartTimestamp();
   const state = loadOverlayState();
+  state.sleep_until = snoozeUntil;
   state.active_tasks = state.active_tasks || {};
-  const snoozeUntil = isSleep ? nextStartTimestamp() : Date.now() + 30 * 60_000;
-  state.active_tasks[taskId] = {
-    task_name: taskName,
-    description,
-    elapsed_seconds: elapsedSeconds,
-    mode,
-    last_updated: Date.now(),
-    estimated_duration: estimatedMinutes,
-    snooze_count: 0,
-    snooze_until: snoozeUntil,
-    snoozed: true,
-    custom_postponed: customDueDateTime ? true : false,
-    custom_due: customDueDateTime || null,
-  };
-  if (isSleep) {
-    state.sleep_until = snoozeUntil;
+  if (state.active_tasks[taskId]) {
+    delete state.active_tasks[taskId];
   }
   saveOverlayState(state);
   log(
-    `postpone-task: overlay state updated taskId=${taskId} snooze_until=${snoozeUntil} custom_postponed=${customDueDateTime ? "yes" : "no"}`
+    `postpone-task: sleep mode until ${new Date(snoozeUntil).toISOString()}`
   );
 
   activeOverlays.delete(taskId);
   overlayTask = null;
   if (overlayWindow) overlayWindow.close();
 
-  if (!isSleep) {
-    setTimeout(() => {
-      checkAndNotify().catch((err) => log(`Notifier error: ${err}`));
-    }, 1000);
-  }
-  log(
-    `postpone-task: done taskId=${taskId} sleep=${isSleep} customPostponed=${customDueDateTime ? "yes" : "no"}`
-  );
-  return { ok: true, sleep: isSleep, customPostponed: customDueDateTime ? true : false, parsedDate: customDueDateTime };
+  return { ok: true, sleep: true, customPostponed: false };
 });
 
 ipcMain.handle("start-task-session", (_event, payload) => {
@@ -2491,11 +2613,17 @@ ipcMain.handle("overlay-move-by", (_event, payload) => {
   log(
     `overlay-move-by: dx=${dx} dy=${dy} bounds=${JSON.stringify(bounds)} visible=${overlayWindow.isVisible()} focused=${overlayWindow.isFocused()}`
   );
-  overlayWindow.setPosition(
-    Math.round(bounds.x + dx),
-    Math.round(bounds.y + dy),
-    false
-  );
+  let nextX = Math.round(bounds.x + dx);
+  let nextY = Math.round(bounds.y + dy);
+  if (overlayCornerAnchor) {
+    const nearX = Math.abs(nextX - overlayCornerAnchor.x) <= OVERLAY_CORNER_SNAP_PX;
+    const nearY = Math.abs(nextY - overlayCornerAnchor.y) <= OVERLAY_CORNER_SNAP_PX;
+    if (nearX && nearY) {
+      nextX = overlayCornerAnchor.x;
+      nextY = overlayCornerAnchor.y;
+    }
+  }
+  overlayWindow.setPosition(nextX, nextY, false);
   log(`overlay-move-by: done bounds=${JSON.stringify(overlayWindow.getBounds())}`);
   return { ok: true };
 });
