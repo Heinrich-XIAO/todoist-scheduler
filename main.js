@@ -425,7 +425,11 @@ function createQuickWindow() {
     },
   });
   quickWindow.setMenuBarVisibility(false);
+  quickWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   quickWindow.loadURL(`${getAppUrl()}?page=quick`);
+  quickWindow.on("blur", () => {
+    quickWindow?.hide();
+  });
 }
 
 function createOverlayWindow() {
@@ -484,7 +488,7 @@ function createTray() {
   tray = new Tray(image);
   const menu = Menu.buildFromTemplate([
     {
-      label: "Open Control Center",
+      label: "Open Todoist Scheduler",
       click: () => {
         if (!mainWindow) createMainWindow();
         mainWindow.show();
@@ -2785,10 +2789,21 @@ app.whenReady().then(() => {
   }
   createMainWindow();
   if (!IS_E2E) {
-    createQuickWindow();
     createTray();
     const registered = globalShortcut.register("Control+Space", () => {
+      if (!quickWindow) createQuickWindow();
       if (quickWindow) {
+        const { x, y } = screen.getCursorScreenPoint();
+        const display = screen.getDisplayNearestPoint({ x, y });
+        const workArea = display.workArea;
+        const windowWidth = 520;
+        const windowHeight = 200;
+        quickWindow.setBounds({
+          x: Math.floor(workArea.x + (workArea.width - windowWidth) / 2),
+          y: Math.floor(workArea.y + (workArea.height - windowHeight) / 2),
+          width: windowWidth,
+          height: windowHeight
+        });
         quickWindow.show();
         quickWindow.focus();
       }

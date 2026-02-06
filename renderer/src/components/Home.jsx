@@ -42,8 +42,7 @@ export default function Home() {
     <div className="min-h-screen bg-ink text-white" data-testid="page-home">
       <div className="max-w-5xl mx-auto px-8 py-12">
         <div className="mb-10">
-          <p className="text-sm uppercase tracking-[0.3em] text-amber">Todoist Scheduler</p>
-          <h1 className="text-4xl font-semibold">Control Center</h1>
+          <h1 className="text-4xl font-semibold">Todoist Scheduler</h1>
           <p className="text-zinc-400 mt-2">
             This Electron app replaces the Python daemons and runs scheduling locally.
           </p>

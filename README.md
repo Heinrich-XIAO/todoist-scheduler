@@ -1,4 +1,4 @@
-# Electron Control Center
+# Electron Todoist Scheduler
 
 This Electron app replaces the Python daemons. It runs scheduling, notifications, overlays, and life blocks.
 

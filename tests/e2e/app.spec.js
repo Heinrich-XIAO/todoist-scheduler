@@ -40,7 +40,7 @@ test.describe("Todoist Scheduler Electron", () => {
 
   test("home screen navigates to config and back", async () => {
     await expect(page.getByTestId("page-home")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Control Center" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Todoist Scheduler" })).toBeVisible();
 
     const configCard = page
       .getByRole("heading", { name: "Configuration" })
