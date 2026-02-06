@@ -1,26 +1,24 @@
 import React, { useEffect, useRef, useState } from "react";
 import api from "../bridge.js";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.jsx";
 import { Button } from "./ui/button.jsx";
-import { Input } from "./ui/input.jsx";
-import { Alert } from "./ui/alert.jsx";
-import { toast } from "sonner";
 
 export default function QuickStart() {
   const [taskName, setTaskName] = useState("");
-  const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
     const onKeyDown = (event) => {
       if (event.key === "Escape") {
         api.closeQuickWindow();
+        return;
       }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    inputRef.current?.focus();
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, []);
 
   const onSubmit = async (event) => {
@@ -30,51 +28,26 @@ export default function QuickStart() {
     setSubmitting(true);
     const res = await api.startQuickTask({
       taskName: trimmed,
-      description: description.trim(),
     });
     setSubmitting(false);
-    if (!res?.ok) {
-      toast.error("Could not start the task.");
-    }
   };
 
   return (
     <div
-      className="min-h-screen bg-ink text-white flex items-center justify-center p-6"
+      className="h-full bg-ink text-white flex items-center justify-center p-6"
       data-testid="page-quick"
     >
-      <Card className="w-full max-w-xl">
-        <CardHeader>
-          <CardTitle>Start a task</CardTitle>
-          <CardDescription>Type what you need to do. AI will estimate time.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!api.isAvailable() && (
-            <Alert variant="warning" className="mb-4">
-              IPC not available in browser preview. Run the Electron app.
-            </Alert>
-          )}
+      <div className="w-full max-w-xl">
+        <div>
           <form onSubmit={onSubmit} className="space-y-4">
-            <div>
-              <label className="text-sm text-zinc-300">Task name</label>
-              <Input
-                ref={inputRef}
-                value={taskName}
-                onChange={(e) => setTaskName(e.target.value)}
-                placeholder="Write status update"
-                className="mt-2"
-              />
-            </div>
-            <div>
-              <label className="text-sm text-zinc-300">Notes (optional)</label>
-              <Input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Add a bit more context"
-                className="mt-2"
-              />
-            </div>
-            <div className="flex items-center justify-between">
+            <textarea
+              ref={inputRef}
+              value={taskName}
+              onChange={(e) => setTaskName(e.target.value)}
+              placeholder="What do you need to do?"
+              className="w-full h-24 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-600 resize-none"
+            />
+            <div className="flex items-center justify-end gap-3">
               <Button
                 type="button"
                 variant="secondary"
@@ -87,8 +60,8 @@ export default function QuickStart() {
               </Button>
             </div>
           </form>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

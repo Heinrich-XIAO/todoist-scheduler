@@ -22,6 +22,7 @@ function formatTime(seconds) {
 
 export default function Overlay() {
   const [task, setTask] = useState(null);
+  const [completedTask, setCompletedTask] = useState(null);
   const [mode, setMode] = useState("full");
   const [timerStarted, setTimerStarted] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -374,7 +375,13 @@ export default function Overlay() {
       });
       setSessionStarted(false);
     }
+    const completedTaskContent = task.content;
     await api.completeTask(task.id);
+    if (mode === "corner") {
+      setCompletedTask({ content: completedTaskContent, elapsed });
+      setMode("completion");
+      await api.setOverlayMode("completion");
+    }
     setTimerCompleteOpen(false);
   };
 
@@ -442,7 +449,32 @@ export default function Overlay() {
           />
         </div>
       )}
-      {mode === "corner" ? (
+      {mode === "completion" ? (
+        <div className="h-full w-full bg-ink/95 text-white flex flex-col items-center justify-center gap-4 relative z-10 p-8">
+          <div className="text-4xl">✓</div>
+          <h2 className="text-2xl font-semibold text-center">Task Completed</h2>
+          {completedTask && (
+            <>
+              <p className="text-lg text-zinc-300 text-center max-w-md">
+                {completedTask.content}
+              </p>
+              <p className="text-sm text-zinc-400">
+                Time spent: {formatTime(completedTask.elapsed)}
+              </p>
+            </>
+          )}
+          <Button
+            onClick={() => {
+              setTask(null);
+              setCompletedTask(null);
+              setMode("full");
+              api.setOverlayMode("full");
+            }}
+          >
+            Close
+          </Button>
+        </div>
+      ) : mode === "corner" ? (
           <>
             <div 
               className="absolute inset-0 pointer-events-none"
@@ -483,7 +515,11 @@ export default function Overlay() {
                           });
                           setSessionStarted(false);
                         }
+                        const completedTaskContent = task.content;
                         await api.completeTask(task.id);
+                        setCompletedTask({ content: completedTaskContent, elapsed });
+                        setMode("completion");
+                        await api.setOverlayMode("completion");
                       }}
                     >
                       Complete

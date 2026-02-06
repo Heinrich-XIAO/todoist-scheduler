@@ -409,7 +409,7 @@ function createQuickWindow() {
   if (quickWindow) return;
   quickWindow = new BrowserWindow({
     width: 520,
-    height: 360,
+    height: 200,
     resizable: false,
     fullscreenable: false,
     maximizable: false,
@@ -417,16 +417,15 @@ function createQuickWindow() {
     alwaysOnTop: true,
     frame: false,
     backgroundColor: "#0b0b0b",
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
+      devTools: false,
     },
   });
   quickWindow.setMenuBarVisibility(false);
   quickWindow.loadURL(`${getAppUrl()}?page=quick`);
-  quickWindow.on("closed", () => {
-    quickWindow = null;
-  });
 }
 
 function createOverlayWindow() {
@@ -593,12 +592,20 @@ function setOverlayMode(mode) {
     } else {
       applyCornerBounds();
     }
+  } else if (mode === "completion") {
+    overlayWindow.setBackgroundColor("#0b0b0b");
+    overlayWindow.setResizable(false);
+    overlayWindow.setSize(400, 250);
+    overlayWindow.center();
+    overlayWindow.setAlwaysOnTop(true, "screen-saver");
   } else {
     overlayWindow.setBackgroundColor("#0b0b0b");
     overlayWindow.setResizable(true);
     overlayWindow.setMinimumSize(0, 0);
     overlayWindow.setMaximumSize(10000, 10000);
-    overlayWindow.setFullScreen(true);
+    overlayWindow.setFullScreen(false);
+    overlayWindow.setSize(600, 400);
+    overlayWindow.center();
     overlayWindow.setAlwaysOnTop(true, "screen-saver");
   }
   overlayWindow.webContents.send("overlay-mode", mode);
@@ -2374,7 +2381,7 @@ ipcMain.handle("start-quick-task", async (_event, payload) => {
 });
 
 ipcMain.handle("close-quick-window", () => {
-  if (quickWindow) quickWindow.close();
+  if (quickWindow) quickWindow.hide();
   return { ok: true };
 });
 
@@ -2410,7 +2417,11 @@ ipcMain.handle("complete-task", async (_event, taskId) => {
   saveOverlayState(state);
   activeOverlays.delete(taskId);
   overlayTask = null;
-  if (overlayWindow) overlayWindow.close();
+  if (overlayWindow && overlayMode === "corner") {
+    setOverlayMode("completion");
+  } else if (overlayWindow) {
+    overlayWindow.close();
+  }
   return { ok, error };
 });
 
@@ -2774,9 +2785,9 @@ app.whenReady().then(() => {
   }
   createMainWindow();
   if (!IS_E2E) {
+    createQuickWindow();
     createTray();
     const registered = globalShortcut.register("Control+Space", () => {
-      if (!quickWindow) createQuickWindow();
       if (quickWindow) {
         quickWindow.show();
         quickWindow.focus();
