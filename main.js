@@ -1089,6 +1089,13 @@ function hasDontChangeTime(task) {
   return labels.includes("dontchangetime") || labels.includes("#dontchangetime");
 }
 
+function normalizeManualDuration(minutes) {
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  const rounded = Math.round(minutes / INTERVAL_MINUTES) * INTERVAL_MINUTES;
+  const quantized = rounded || minutes;
+  return Math.max(1, quantized);
+}
+
 function parseDuration(description) {
   // Try JSON format first
   try {
@@ -1097,9 +1104,7 @@ function parseDuration(description) {
       const match = /(\d{1,3})m/.exec(parsed.duration);
       if (match) {
         const minutes = parseInt(match[1], 10);
-        if (!Number.isFinite(minutes)) return null;
-        const rounded = Math.round(minutes / INTERVAL_MINUTES) * INTERVAL_MINUTES;
-        return Math.max(5, rounded);
+        return normalizeManualDuration(minutes);
       }
     }
   } catch {
@@ -1110,9 +1115,7 @@ function parseDuration(description) {
   const match = /(?:^|\s)(\d{1,3})m\b/.exec(description || "");
   if (!match) return null;
   const minutes = parseInt(match[1], 10);
-  if (!Number.isFinite(minutes)) return null;
-  const rounded = Math.round(minutes / INTERVAL_MINUTES) * INTERVAL_MINUTES;
-  return Math.max(5, rounded);
+  return normalizeManualDuration(minutes);
 }
 
 function parseFixedLength(description) {
