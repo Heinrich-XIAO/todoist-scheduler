@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "../bridge.js";
 import { Button } from "./ui/button.jsx";
 import { ArrowDownRight, Calendar, Clock, GripVertical } from "./ui/icons.jsx";
@@ -43,6 +43,7 @@ export default function Overlay() {
     x: typeof window !== "undefined" ? window.screenX : 0,
     y: typeof window !== "undefined" ? window.screenY : 0,
   }));
+  const completionPopupSent = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -112,6 +113,26 @@ export default function Overlay() {
     }, 1000);
     return () => clearInterval(id);
   }, [timerStarted, task?.estimatedMinutes, timerCompleteOpen]);
+
+  useEffect(() => {
+    if (!timerCompleteOpen) {
+      completionPopupSent.current = false;
+      return;
+    }
+    if (
+      mode !== "corner" ||
+      completionPopupSent.current ||
+      !task
+    ) {
+      return;
+    }
+    completionPopupSent.current = true;
+    api.showCornerCompletionPopup({
+      taskName: task.content,
+      elapsedSeconds: elapsed,
+      estimatedMinutes: task?.estimatedMinutes || 0,
+    }).catch(() => undefined);
+  }, [elapsed, mode, task, timerCompleteOpen]);
 
   useEffect(() => {
     if (mode !== "corner") {

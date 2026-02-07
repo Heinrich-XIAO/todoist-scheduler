@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,5 +18,10 @@ jobs:
           bun-version: latest
       - name: Install dependencies
         run: bun install
-      - name: Build Electron app
-        run: bun run build
+      - name: Build DMG
+        run: bun run build:dmg
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: todoist-scheduler-dmg
+          path: dist/*.dmg

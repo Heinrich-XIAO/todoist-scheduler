@@ -142,6 +142,7 @@ if (isE2E) {
     closeQuickWindow: async () => ({ ok: true }),
     setOverlayPosition: async () => ({ ok: true }),
     moveOverlayBy: async () => ({ ok: true }),
+    showCornerCompletionPopup: async () => ({ ok: true }),
     onOverlayMode: (handler) => {
       overlayHandler = handler;
     },
@@ -182,6 +183,8 @@ if (isE2E) {
       console.log("[Overlay][drag] ipc invoke overlay-move-by", payload);
       return ipcRenderer.invoke("overlay-move-by", payload);
     },
+    showCornerCompletionPopup: (payload) =>
+      ipcRenderer.invoke("overlay-corner-completion-popup", payload),
     onOverlayMode: (handler) =>
       ipcRenderer.on("overlay-mode", (_event, mode) => handler(mode)),
     onOverlayCornerAnchor: (handler) =>

@@ -16,6 +16,15 @@ bun run dev
 
 The app will auto-create a LaunchAgent that runs `bun run dev` on login. You can toggle autostart in the app.
 
+## Build DMG
+
+```bash
+bun install
+bun run build:dmg
+```
+
+The DMG will be in `dist/`.
+
 ## Logs
 
 - `data/logs/electron.log`

@@ -28,6 +28,7 @@ const fallback = {
   startQueueTask: async () => ({ ok: false }),
   startQuickTask: async () => ({ ok: false }),
   closeQuickWindow: async () => ({ ok: false }),
+  showCornerCompletionPopup: async () => ({ ok: false }),
   onOverlayMode: () => {},
   onOverlayCornerAnchor: () => {},
 };
@@ -65,6 +66,7 @@ const api = {
     }
     return fn(payload);
   },
+  showCornerCompletionPopup: (payload) => current().showCornerCompletionPopup(payload),
   getUsageDashboard: () => current().getUsageDashboard(),
   getTaskQueueCache: () => current().getTaskQueueCache(),
   getTaskQueue: () => current().getTaskQueue(),

@@ -2643,6 +2643,41 @@ ipcMain.handle("overlay-move-by", (_event, payload) => {
   return { ok: true };
 });
 
+ipcMain.handle("overlay-corner-completion-popup", (_event, payload) => {
+  if (typeof Notification.isSupported === "function" && !Notification.isSupported()) {
+    return { ok: false, reason: "notifications-unsupported" };
+  }
+  const taskName = (payload?.taskName || "").trim();
+  if (!taskName) return { ok: false, reason: "missing-task" };
+  const elapsedSeconds = Number(payload?.elapsedSeconds) || 0;
+  const estimatedMinutes = Number(payload?.estimatedMinutes) || 0;
+  const formatDuration = (seconds) => {
+    const totalSeconds = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    if (mins > 0) {
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    }
+    return `${secs}s`;
+  };
+  const details = [];
+  if (estimatedMinutes > 0) details.push(`Goal ${estimatedMinutes}m`);
+  if (elapsedSeconds > 0) details.push(`Elapsed ${formatDuration(elapsedSeconds)}`);
+  const body = details.length
+    ? `${taskName} · ${details.join(" · ")}`
+    : taskName;
+  new Notification({
+    title: "Corner timer complete",
+    body,
+  }).show();
+  logUsage("overlay_corner_popup", {
+    task_name: taskName,
+    elapsed_seconds: elapsedSeconds,
+    estimated_minutes: estimatedMinutes,
+  });
+  return { ok: true };
+});
+
 ipcMain.handle("check-justification", async (_event, payload) => {
   const { taskName, description, justification } = payload;
   return checkJustification(taskName, description, justification);
