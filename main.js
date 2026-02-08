@@ -2729,6 +2729,7 @@ ipcMain.handle("defer-task", (_event, payload) => {
     snooze_until: Date.now() + 5 * 60_000,
     snoozed: true,
   };
+  state.sleep_until = Date.now() + 5 * 60_000;
   saveOverlayState(state);
   activeOverlays.delete(taskId);
   overlayTask = null;
