@@ -44,6 +44,7 @@ Electron app
   - `data/logs/electron-dev.log`
   - `data/logs/electron-dev.error.log`
 - I can check `data/logs/electron.log` and `data/logs/electron-dev.log` myself.
+- Always open and review both `data/logs/electron.log` and `data/logs/electron-dev.log` yourself; do not ask the user to do it.
 
 Environment variables
 
