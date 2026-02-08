@@ -104,7 +104,7 @@ export default function Overlay() {
     const id = setInterval(() => {
       setElapsed((prevElapsed) => {
         const newElapsed = prevElapsed + 1;
-        const estimatedTotalSeconds = (task?.estimatedMinutes || 0) * 60;
+        const estimatedTotalSeconds = ((task?.estimatedMinutes || 0) + extendedMinutes) * 60;
         if (newElapsed > estimatedTotalSeconds && !timerCompleteOpen) {
           setTimerCompleteOpen(true);
         }
@@ -112,7 +112,7 @@ export default function Overlay() {
       });
     }, 1000);
     return () => clearInterval(id);
-  }, [timerStarted, task?.estimatedMinutes, timerCompleteOpen]);
+  }, [timerStarted, task?.estimatedMinutes, extendedMinutes, timerCompleteOpen]);
 
   useEffect(() => {
     if (!timerCompleteOpen) {
