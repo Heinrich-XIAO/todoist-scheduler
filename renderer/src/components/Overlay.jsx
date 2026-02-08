@@ -98,11 +98,37 @@ export default function Overlay() {
   useEffect(() => {
     if (!timerStarted) return undefined;
     const id = setInterval(() => {
-      setElapsed((prevElapsed) => prevElapsed + 1);
+      setElapsed((prevElapsed) => {
+        const newElapsed = prevElapsed + 1;
+        const estimatedTotalSeconds = ((task?.estimatedMinutes || 0) + extendedMinutes) * 60;
+        if (newElapsed > estimatedTotalSeconds && !timerCompleteOpen) {
+          setTimerCompleteOpen(true);
+        }
+        return newElapsed;
+      });
     }, 1000);
     return () => clearInterval(id);
-  }, [timerStarted]);
+  }, [timerStarted, task?.estimatedMinutes, extendedMinutes, timerCompleteOpen]);
 
+  useEffect(() => {
+    if (!timerCompleteOpen) {
+      completionPopupSent.current = false;
+      return;
+    }
+    if (
+      mode !== "corner" ||
+      completionPopupSent.current ||
+      !task
+    ) {
+      return;
+    }
+    completionPopupSent.current = true;
+    api.showCornerCompletionPopup({
+      taskName: task.content,
+      elapsedSeconds: elapsed,
+      estimatedMinutes: task?.estimatedMinutes || 0,
+    }).catch(() => undefined);
+  }, [elapsed, mode, task, timerCompleteOpen]);
 
   useEffect(() => {
     if (mode !== "corner") {

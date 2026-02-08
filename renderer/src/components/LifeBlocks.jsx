@@ -10,6 +10,7 @@ import {
 import { Button } from "./ui/button.jsx";
 import { Input } from "./ui/input.jsx";
 import { Label } from "./ui/label.jsx";
+import { DatePicker } from "./ui/date-picker.jsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
@@ -32,10 +33,16 @@ const DAY_LABELS = DAYS.reduce((acc, day) => {
   return acc;
 }, {});
 
+const getTodayDate = () => {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - offsetMs).toISOString().split("T")[0];
+};
+
 export default function LifeBlocks() {
   const [state, setState] = useState({ one_off: [], weekly: [] });
   const [type, setType] = useState("one_off");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(() => getTodayDate());
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [label, setLabel] = useState("");
@@ -119,6 +126,7 @@ export default function LifeBlocks() {
     setStart("");
     setEnd("");
     setLabel("");
+    setDate(getTodayDate());
   };
 
   const onDelete = async (entry) => {
@@ -201,10 +209,9 @@ export default function LifeBlocks() {
                   <div className="space-y-4">
                     <div>
                       <Label>Date</Label>
-                      <Input
+                      <DatePicker
                         value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                        placeholder="YYYY-MM-DD"
+                        onChange={setDate}
                         className="mt-2"
                       />
                     </div>
