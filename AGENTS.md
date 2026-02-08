@@ -12,19 +12,6 @@ Layout
 - Electron preload: `preload.cjs`
 - Renderer (React + Vite): `renderer/`
 
-Key commands (always use uv)
-
-```bash
-uv sync
-
-uv run todoist-scheduler
-uv run task-notifier
-
-uv run task-notifier --test
-uv run task-notifier --list-active
-uv run task-notifier --resume <task-id>
-```
-
 Never run `npm run dev` or `bun run dev` unless explicitly instructed.
 
 Note: the notifier daemon also runs the scheduler every 5 minutes.
