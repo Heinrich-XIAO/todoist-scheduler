@@ -29,6 +29,11 @@ const fallback = {
   startQuickTask: async () => ({ ok: false }),
   closeQuickWindow: async () => ({ ok: false }),
   showCornerCompletionPopup: async () => ({ ok: false }),
+  openNextTaskPopup: async () => ({ ok: false }),
+  closeNextTaskPopup: async () => ({ ok: false }),
+  onNextTaskPopupAction: () => () => {},
+  onNextTaskPopupData: () => () => {},
+  sendNextTaskPopupAction: async () => ({ ok: false }),
   onOverlayMode: () => {},
   onOverlayCornerAnchor: () => {},
 };
@@ -67,6 +72,11 @@ const api = {
     return fn(payload);
   },
   showCornerCompletionPopup: (payload) => current().showCornerCompletionPopup(payload),
+  openNextTaskPopup: (payload) => current().openNextTaskPopup(payload),
+  closeNextTaskPopup: () => current().closeNextTaskPopup(),
+  onNextTaskPopupAction: (handler) => current().onNextTaskPopupAction(handler),
+  onNextTaskPopupData: (handler) => current().onNextTaskPopupData(handler),
+  sendNextTaskPopupAction: (payload) => current().sendNextTaskPopupAction(payload),
   getUsageDashboard: () => current().getUsageDashboard(),
   getTaskQueueCache: () => current().getTaskQueueCache(),
   getTaskQueue: () => current().getTaskQueue(),

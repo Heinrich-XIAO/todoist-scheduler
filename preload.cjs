@@ -143,6 +143,11 @@ if (isE2E) {
     setOverlayPosition: async () => ({ ok: true }),
     moveOverlayBy: async () => ({ ok: true }),
     showCornerCompletionPopup: async () => ({ ok: true }),
+    openNextTaskPopup: async () => ({ ok: true }),
+    closeNextTaskPopup: async () => ({ ok: true }),
+    onNextTaskPopupAction: () => () => {},
+    onNextTaskPopupData: () => () => {},
+    sendNextTaskPopupAction: async () => ({ ok: true }),
     onOverlayMode: (handler) => {
       overlayHandler = handler;
     },
@@ -185,6 +190,20 @@ if (isE2E) {
     },
     showCornerCompletionPopup: (payload) =>
       ipcRenderer.invoke("overlay-corner-completion-popup", payload),
+    openNextTaskPopup: (payload) =>
+      ipcRenderer.invoke("overlay-open-next-task-popup", payload),
+    closeNextTaskPopup: () => ipcRenderer.invoke("overlay-close-next-task-popup"),
+    onNextTaskPopupAction: (handler) => {
+      const listener = (_event, payload) => handler(payload);
+      ipcRenderer.on("overlay-next-task-popup-action", listener);
+      return () => ipcRenderer.off("overlay-next-task-popup-action", listener);
+    },
+    onNextTaskPopupData: (handler) => {
+      const listener = (_event, data) => handler(data);
+      ipcRenderer.on("next-task-popup-data", listener);
+      return () => ipcRenderer.off("next-task-popup-data", listener);
+    },
+    sendNextTaskPopupAction: (payload) => ipcRenderer.invoke("next-task-popup-action", payload),
     onOverlayMode: (handler) =>
       ipcRenderer.on("overlay-mode", (_event, mode) => handler(mode)),
     onOverlayCornerAnchor: (handler) =>

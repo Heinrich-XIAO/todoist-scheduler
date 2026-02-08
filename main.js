@@ -196,6 +196,10 @@ let quickWindow = null;
 let overlayTask = null;
 let overlayMode = "full";
 let overlayCornerAnchor = null;
+let nextTaskWindow = null;
+let nextTaskWindowReady = false;
+let nextTaskPopupPayload = null;
+let nextTaskAutoStartTimer = null;
 const OVERLAY_CORNER_SNAP_PX = 5;
 let schedulerInstance = null;
 let schedulerStatus = { lastRun: null, nextRun: null, lastError: null };
@@ -538,6 +542,7 @@ function resetOverlay(reason) {
   overlayTask = null;
   overlayMode = "full";
   overlayCornerAnchor = null;
+  closeNextTaskWindow();
 }
 
 function describeOverlayWindow() {
@@ -614,6 +619,145 @@ function setOverlayMode(mode) {
   }
   overlayWindow.webContents.send("overlay-mode", mode);
   broadcastOverlayCornerAnchor();
+}
+
+function createNextTaskWindow() {
+  nextTaskWindowReady = false;
+  const win = new BrowserWindow({
+    width: 560,
+    height: 420,
+    resizable: false,
+    movable: true,
+    minimizable: false,
+    maximizable: false,
+    frame: false,
+    transparent: true,
+    show: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    backgroundColor: "#00000000",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+  win.loadURL(`${getAppUrl()}?page=next-task-popup`);
+  win.once("ready-to-show", () => {
+    win.show();
+  });
+  win.on("closed", () => {
+    nextTaskWindow = null;
+    nextTaskWindowReady = false;
+    nextTaskPopupPayload = null;
+  });
+  win.webContents.on("did-finish-load", () => {
+    nextTaskWindowReady = true;
+    if (nextTaskPopupPayload) {
+      win.webContents.send("next-task-popup-data", nextTaskPopupPayload);
+    }
+  });
+  nextTaskWindow = win;
+  return win;
+}
+
+function clearNextTaskAutoStartTimer() {
+  if (nextTaskAutoStartTimer) {
+    clearTimeout(nextTaskAutoStartTimer);
+    nextTaskAutoStartTimer = null;
+  }
+}
+
+async function startQueueTaskInternal(payload) {
+  try {
+    const taskId = payload?.taskId;
+    const taskName = payload?.taskName?.trim();
+    const description = payload?.description?.trim() || "";
+    const requestedMode = payload?.mode || "corner";
+    if (!taskId || !taskName) {
+      log("start-queue-task: missing task id or name");
+      return { ok: false, reason: "missing-task" };
+    }
+    if ((overlayWindow && !isOverlayWindowActive()) || (overlayTask && !isOverlayWindowActive())) {
+      resetOverlay("stale overlay state");
+    } else if (overlayWindow && !overlayTask) {
+      resetOverlay("overlay window without task");
+    }
+    if (overlayWindow || overlayTask) {
+      if (overlayTask?.id !== taskId) {
+        log(
+          `start-queue-task: overlay active for another task (current=${overlayTask?.id || "none"} requested=${taskId}) window=${describeOverlayWindow()}`
+        );
+        return { ok: false, reason: "overlay-active" };
+      }
+    }
+    let estimateMinutes = null;
+    if (Number.isFinite(payload?.estimatedMinutes)) {
+      estimateMinutes = Number(payload.estimatedMinutes);
+    }
+    if (!estimateMinutes || estimateMinutes <= 0) {
+      const estimate = await estimateDuration(taskName, description);
+      estimateMinutes = estimate.minutes || 30;
+    }
+    overlayTask = {
+      id: taskId,
+      content: taskName,
+      description,
+      estimatedMinutes: estimateMinutes,
+      snoozeCount: 0,
+      autoStart: true,
+    };
+    overlayMode = requestedMode;
+    ensureOverlayWindow();
+    setOverlayMode(overlayMode);
+    startSession(taskId, taskName, overlayMode);
+    logUsage("queue_task_start", { task_id: taskId, task_name: taskName, mode: overlayMode });
+    return { ok: true };
+  } catch (err) {
+    log(`start-queue-task failed: ${err}`);
+    return { ok: false, reason: "error", error: String(err) };
+  }
+}
+
+function sendNextTaskPopupPayload(payload) {
+  nextTaskPopupPayload = payload;
+  if (!nextTaskWindow || nextTaskWindow.isDestroyed()) {
+    createNextTaskWindow();
+  }
+  if (nextTaskWindow && nextTaskWindowReady) {
+    nextTaskWindow.webContents.send("next-task-popup-data", payload);
+    nextTaskWindow.focus();
+  }
+}
+
+function scheduleNextTaskAutoStart(payload) {
+  clearNextTaskAutoStartTimer();
+  const countdownSeconds = Number(payload?.countdownSeconds) || 0;
+  if (!payload?.task || countdownSeconds <= 0) return;
+  const deadlineAt = Date.now() + countdownSeconds * 1000;
+  nextTaskPopupPayload = { ...payload, deadlineAt };
+  nextTaskAutoStartTimer = setTimeout(async () => {
+    const startPayload = {
+      taskId: payload.task.id,
+      taskName: payload.task.content,
+      description: payload.task.description || "",
+      mode: "corner",
+      estimatedMinutes: payload.task.estimatedMinutes,
+    };
+    await startQueueTaskInternal(startPayload);
+    closeNextTaskWindow();
+  }, countdownSeconds * 1000);
+  sendNextTaskPopupPayload(nextTaskPopupPayload);
+}
+
+function closeNextTaskWindow() {
+  if (nextTaskWindow && !nextTaskWindow.isDestroyed()) {
+    nextTaskWindow.close();
+  }
+  nextTaskWindow = null;
+  nextTaskWindowReady = false;
+  nextTaskPopupPayload = null;
+  clearNextTaskAutoStartTimer();
 }
 
 function isSameDay(a, b) {
@@ -1528,20 +1672,20 @@ function isFixedTask(task) {
 }
 
 function splitByDay(tasks) {
+  const now = new Date();
   const today = nowDate();
+  const todayEnd = new Date(today);
+  todayEnd.setDate(todayEnd.getDate() + 1);
   const overdue = [];
   const todayTasks = [];
   const upcoming = [];
   tasks.forEach((task) => {
     const dueMs = task.due.getTime();
-    if (dueMs < today.getTime()) {
+    if (dueMs < now.getTime()) {
       overdue.push(task);
       return;
     }
-    const sameDay = task.due.getFullYear() === today.getFullYear() &&
-      task.due.getMonth() === today.getMonth() &&
-      task.due.getDate() === today.getDate();
-    if (sameDay) {
+    if (dueMs >= today.getTime() && dueMs < todayEnd.getTime()) {
       todayTasks.push(task);
     } else {
       upcoming.push(task);
@@ -2646,6 +2790,50 @@ ipcMain.handle("overlay-move-by", (_event, payload) => {
   return { ok: true };
 });
 
+ipcMain.handle("overlay-open-next-task-popup", (_, payload) => {
+  try {
+    if (!payload?.task) {
+      clearNextTaskAutoStartTimer();
+      sendNextTaskPopupPayload({ empty: true });
+      return { ok: true, empty: true };
+    }
+    scheduleNextTaskAutoStart(payload);
+    logUsage("next_task_popup_open", {
+      task_id: payload.task.id,
+      mode: overlayMode,
+    });
+    return { ok: true };
+  } catch (err) {
+    log(`Failed to open next task popup: ${err}`);
+    return { ok: false, error: String(err) };
+  }
+});
+
+ipcMain.handle("overlay-close-next-task-popup", () => {
+  closeNextTaskWindow();
+  return { ok: true };
+});
+
+ipcMain.handle("next-task-popup-action", async (_event, payload) => {
+  if (payload?.action === "start" && nextTaskPopupPayload?.task) {
+    clearNextTaskAutoStartTimer();
+    const task = nextTaskPopupPayload.task;
+    await startQueueTaskInternal({
+      taskId: task.id,
+      taskName: task.content,
+      description: task.description || "",
+      mode: "corner",
+      estimatedMinutes: task.estimatedMinutes,
+    });
+    closeNextTaskWindow();
+  }
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send("overlay-next-task-popup-action", payload);
+  }
+  logUsage("next_task_popup_action", { action: payload?.action });
+  return { ok: true };
+});
+
 ipcMain.handle("overlay-corner-completion-popup", (_event, payload) => {
   if (typeof Notification.isSupported === "function" && !Notification.isSupported()) {
     return { ok: false, reason: "notifications-unsupported" };
@@ -2724,54 +2912,7 @@ ipcMain.handle("open-task-in-todoist", (_event, taskId) => {
 });
 
 ipcMain.handle("start-queue-task", async (_event, payload) => {
-  try {
-    const taskId = payload?.taskId;
-    const taskName = payload?.taskName?.trim();
-    const description = payload?.description?.trim() || "";
-    const requestedMode = payload?.mode || "corner";
-    if (!taskId || !taskName) {
-      log("start-queue-task: missing task id or name");
-      return { ok: false, reason: "missing-task" };
-    }
-    if ((overlayWindow && !isOverlayWindowActive()) || (overlayTask && !isOverlayWindowActive())) {
-      resetOverlay("stale overlay state");
-    } else if (overlayWindow && !overlayTask) {
-      resetOverlay("overlay window without task");
-    }
-    if (overlayWindow || overlayTask) {
-      if (overlayTask?.id !== taskId) {
-        log(
-          `start-queue-task: overlay active for another task (current=${overlayTask?.id || "none"} requested=${taskId}) window=${describeOverlayWindow()}`
-        );
-        return { ok: false, reason: "overlay-active" };
-      }
-    }
-    let estimateMinutes = null;
-    if (Number.isFinite(payload?.estimatedMinutes)) {
-      estimateMinutes = Number(payload.estimatedMinutes);
-    }
-    if (!estimateMinutes || estimateMinutes <= 0) {
-      const estimate = await estimateDuration(taskName, description);
-      estimateMinutes = estimate.minutes || 30;
-    }
-    overlayTask = {
-      id: taskId,
-      content: taskName,
-      description,
-      estimatedMinutes: estimateMinutes,
-      snoozeCount: 0,
-      autoStart: true,
-    };
-    overlayMode = requestedMode;
-    ensureOverlayWindow();
-    setOverlayMode(overlayMode);
-    startSession(taskId, taskName, overlayMode);
-    logUsage("queue_task_start", { task_id: taskId, task_name: taskName, mode: overlayMode });
-    return { ok: true };
-  } catch (err) {
-    log(`start-queue-task failed: ${err}`);
-    return { ok: false, reason: "error", error: String(err) };
-  }
+  return startQueueTaskInternal(payload);
 });
 
 ipcMain.handle("get-task-queue", async () => {

@@ -10,6 +10,7 @@ import { ArrowLeft, Calendar, Check } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
 import { Play, Repeat } from "lucide-react";
 import { toast } from "sonner";
+import { getPrimaryQueueTaskId } from "../lib/queue/nextTask.js";
 
 function formatTimeDisplay(iso, isOverdue, isToday) {
   if (!iso) return "";
@@ -265,14 +266,14 @@ export default function Tasks() {
   const grouped = useMemo(() => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const todayStartMs = todayStart.getTime();
+    const now = Date.now();
     const overdue = [];
     const today = [];
     const upcoming = [];
     tasks.forEach((task) => {
       const due = task.due ? Date.parse(task.due) : null;
       if (!due) return;
-      if (due < todayStartMs) {
+      if (due < now) {
         overdue.push(task);
         return;
       }
@@ -286,7 +287,7 @@ export default function Tasks() {
     return { overdue, today, upcoming };
   }, [tasks]);
 
-  const primaryTaskId = useMemo(() => tasks[0]?.id, [tasks]);
+  const primaryTaskId = useMemo(() => getPrimaryQueueTaskId(tasks), [tasks]);
 
   return (
     <div className="min-h-screen bg-ink text-white" data-testid="page-queue">

@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../bridge.js";
 import { Button } from "./ui/button.jsx";
 import { ArrowDownRight, Calendar, Clock, GripVertical } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
 import { PostponeModal } from "./PostponeModal.jsx";
-import { TimerCompleteModal } from "./TimerCompleteModal.jsx";
 import { toast } from "sonner";
+import { getPrimaryQueueTask } from "../lib/queue/nextTask.js";
 
 function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
@@ -33,9 +33,6 @@ export default function Overlay() {
   const [postponeWhen, setPostponeWhen] = useState("");
   const [postponeSubmitting, setPostponeSubmitting] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
-  const [timerCompleteOpen, setTimerCompleteOpen] = useState(false);
-  const [extendedMinutes, setExtendedMinutes] = useState(0);
-  const [extending, setExtending] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [cornerAnchor, setCornerAnchor] = useState(null);
@@ -43,7 +40,6 @@ export default function Overlay() {
     x: typeof window !== "undefined" ? window.screenX : 0,
     y: typeof window !== "undefined" ? window.screenY : 0,
   }));
-  const completionPopupSent = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -102,37 +98,11 @@ export default function Overlay() {
   useEffect(() => {
     if (!timerStarted) return undefined;
     const id = setInterval(() => {
-      setElapsed((prevElapsed) => {
-        const newElapsed = prevElapsed + 1;
-        const estimatedTotalSeconds = (task?.estimatedMinutes || 0) * 60;
-        if (newElapsed > estimatedTotalSeconds && !timerCompleteOpen) {
-          setTimerCompleteOpen(true);
-        }
-        return newElapsed;
-      });
+      setElapsed((prevElapsed) => prevElapsed + 1);
     }, 1000);
     return () => clearInterval(id);
-  }, [timerStarted, task?.estimatedMinutes, timerCompleteOpen]);
+  }, [timerStarted]);
 
-  useEffect(() => {
-    if (!timerCompleteOpen) {
-      completionPopupSent.current = false;
-      return;
-    }
-    if (
-      mode !== "corner" ||
-      completionPopupSent.current ||
-      !task
-    ) {
-      return;
-    }
-    completionPopupSent.current = true;
-    api.showCornerCompletionPopup({
-      taskName: task.content,
-      elapsedSeconds: elapsed,
-      estimatedMinutes: task?.estimatedMinutes || 0,
-    }).catch(() => undefined);
-  }, [elapsed, mode, task, timerCompleteOpen]);
 
   useEffect(() => {
     if (mode !== "corner") {
@@ -204,14 +174,14 @@ export default function Overlay() {
 
   const progress = useMemo(() => {
     if (!task?.estimatedMinutes) return 0;
-    const total = (task.estimatedMinutes + extendedMinutes) * 60;
+    const total = task.estimatedMinutes * 60;
     return Math.min(100, (elapsed / total) * 100);
-  }, [elapsed, task, extendedMinutes]);
+  }, [elapsed, task]);
   const remaining = useMemo(() => {
     if (!task?.estimatedMinutes) return 0;
-    const total = (task.estimatedMinutes + extendedMinutes) * 60;
+    const total = task.estimatedMinutes * 60;
     return Math.max(0, total - elapsed);
-  }, [elapsed, task, extendedMinutes]);
+  }, [elapsed, task]);
   const anchorLines = useMemo(() => {
     if (!cornerAnchor) return null;
     const width = cornerAnchor.width || 0;
@@ -380,14 +350,35 @@ export default function Overlay() {
     });
   };
 
-  const onTimerExtend = async () => {
-    setExtending(true);
-    setExtendedMinutes((prev) => prev + (task.estimatedMinutes || 30));
-    setTimerCompleteOpen(false);
-    setExtending(false);
-  };
+  const openNextTaskReminder = useCallback(async () => {
+    if (!api.isAvailable()) return;
+    const countdownSeconds = 300;
+    try {
+      const queue = await api.getTaskQueue();
+      const nextTask = getPrimaryQueueTask(queue?.tasks || []);
+      if (!nextTask) {
+        await api.openNextTaskPopup({ empty: true });
+        return;
+      }
+      const estimatedMinutes = Number.isFinite(Number(nextTask.duration_minutes))
+        ? Number(nextTask.duration_minutes)
+        : undefined;
+      await api.openNextTaskPopup({
+        task: {
+          id: nextTask.id,
+          content: nextTask.content,
+          description: nextTask.description || "",
+          estimatedMinutes,
+        },
+        countdownSeconds,
+      });
+    } catch {
+      await api.openNextTaskPopup({ empty: true });
+    }
+  }, []);
 
-  const onTimerComplete = async () => {
+  const completeCurrentTask = useCallback(async () => {
+    if (!task?.id) return;
     if (sessionStarted) {
       await api.stopTaskSession({
         taskId: task.id,
@@ -403,12 +394,8 @@ export default function Overlay() {
       setMode("completion");
       await api.setOverlayMode("completion");
     }
-    setTimerCompleteOpen(false);
-  };
-
-  const onTimerCancel = () => {
-    setTimerCompleteOpen(false);
-  };
+    await openNextTaskReminder();
+  }, [elapsed, mode, openNextTaskReminder, sessionStarted, task]);
 
   if (!task) {
     return (
@@ -528,19 +515,7 @@ export default function Overlay() {
                       size="sm"
                       variant="default"
                       onClick={async () => {
-                        if (sessionStarted) {
-                          await api.stopTaskSession({
-                            taskId: task.id,
-                            elapsedSeconds: elapsed,
-                            mode,
-                          });
-                          setSessionStarted(false);
-                        }
-                        const completedTaskContent = task.content;
-                        await api.completeTask(task.id);
-                        setCompletedTask({ content: completedTaskContent, elapsed });
-                        setMode("completion");
-                        await api.setOverlayMode("completion");
+                        await completeCurrentTask();
                       }}
                     >
                       Complete
@@ -680,15 +655,7 @@ export default function Overlay() {
                 <Button
                   variant="default"
                   onClick={async () => {
-                    if (sessionStarted) {
-                      await api.stopTaskSession({
-                        taskId: task.id,
-                        elapsedSeconds: elapsed,
-                        mode,
-                      });
-                      setSessionStarted(false);
-                    }
-                    await api.completeTask(task.id);
+                    await completeCurrentTask();
                   }}
                 >
                   Done
@@ -726,16 +693,6 @@ export default function Overlay() {
          disabled={!reason.trim()}
        />
 
-       <TimerCompleteModal
-         open={timerCompleteOpen}
-         task={task}
-         elapsedSeconds={elapsed}
-         onExtend={onTimerExtend}
-         onComplete={onTimerComplete}
-         onCancel={onTimerCancel}
-         extending={extending}
-       />
-
-     </div>
-   );
+    </div>
+  );
 }

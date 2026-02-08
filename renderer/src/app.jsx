@@ -7,6 +7,7 @@ import SchedulerControl from "./components/SchedulerControl.jsx";
 import UsageData from "./components/UsageData.jsx";
 import Tasks from "./components/Tasks.jsx";
 import QuickStart from "./components/QuickStart.jsx";
+import NextTaskPopup from "./components/NextTaskPopup.jsx";
 import { Toaster } from "./components/ui/sonner.jsx";
 
 function getRoute() {
@@ -18,6 +19,7 @@ function getRoute() {
   if (page === "scheduler") return "scheduler";
   if (page === "data") return "data";
   if (page === "queue") return "queue";
+  if (page === "next-task-popup") return "next-task-popup";
   if (page === "quick") return "quick";
   return "home";
 }
@@ -38,13 +40,14 @@ export default function App() {
     if (route === "scheduler") return <SchedulerControl />;
     if (route === "data") return <UsageData />;
     if (route === "queue") return <Tasks />;
+    if (route === "next-task-popup") return <NextTaskPopup />;
     if (route === "quick") return <QuickStart />;
     return <Home />;
   }, [route]);
 
   return (
     <>
-      <div className={`min-h-screen ${route === "overlay" ? "bg-transparent" : "bg-ink"} text-white`}>{page}</div>
+      <div className={`min-h-screen ${(route === "overlay" || route === "next-task-popup") ? "bg-transparent" : "bg-ink"} text-white`}>{page}</div>
       <Toaster position="top-right" richColors />
     </>
   );

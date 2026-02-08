@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import api from "../bridge.js";
 import { Button } from "./ui/button.jsx";
 import { toast } from "sonner";
+import { getPrimaryQueueTask } from "../lib/queue/nextTask.js";
 
 export default function QuickStart() {
   const [taskName, setTaskName] = useState("");
@@ -18,7 +19,7 @@ export default function QuickStart() {
     try {
       const cached = await api.getTaskQueueCache();
       if (cached?.ok && cached.tasks?.length) {
-        candidate = cached.tasks[0];
+        candidate = getPrimaryQueueTask(cached.tasks);
         setNextTask(candidate);
       }
     } catch {
@@ -27,7 +28,7 @@ export default function QuickStart() {
     try {
       const queued = await api.getTaskQueue();
       if (queued?.ok && queued.tasks?.length) {
-        candidate = queued.tasks[0];
+        candidate = getPrimaryQueueTask(queued.tasks);
         setNextTask(candidate);
         return;
       }
@@ -53,7 +54,11 @@ export default function QuickStart() {
         toast.error("No queued tasks available.");
         return;
       }
-      const next = queue.tasks[0];
+      const next = getPrimaryQueueTask(queue.tasks);
+      if (!next) {
+        toast.error("No queued tasks available.");
+        return;
+      }
       const minutes = Number.isFinite(Number(next.duration_minutes))
         ? Number(next.duration_minutes)
         : undefined;
