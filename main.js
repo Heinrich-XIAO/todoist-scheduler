@@ -1262,6 +1262,12 @@ function parseDuration(description) {
   return normalizeManualDuration(minutes);
 }
 
+function getTaskDurationEstimate(task) {
+  const parsed = parseDuration(task.description || "");
+  if (parsed) return parsed;
+  return estimateDurationHeuristic(task.content || "", task.description || "");
+}
+
 function parseFixedLength(description) {
   try {
     const parsed = JSON.parse(description || "");
@@ -1826,10 +1832,10 @@ function expandBlock(date, start, end) {
   return slots;
 }
 
-function blockedSlotsForDate(date) {
-  const state = loadLifeBlocks();
+function blockedSlotsForDate(date, state) {
+  const blocks = state || loadLifeBlocks();
   const slots = new Set();
-  for (const block of state.one_off || []) {
+  for (const block of blocks.one_off || []) {
     const blockDate = parseDate(block.date);
     if (!blockDate || blockDate.getTime() !== date.getTime()) continue;
     const start = parseTime(block.start);
@@ -1841,7 +1847,7 @@ function blockedSlotsForDate(date) {
   }
 
   const todaySlug = weekdaySlug(date);
-  for (const block of state.weekly || []) {
+  for (const block of blocks.weekly || []) {
     const days = (block.days || []).map(normalizeDay);
     if (!days.includes(todaySlug)) continue;
     const start = parseTime(block.start);
@@ -1855,6 +1861,43 @@ function blockedSlotsForDate(date) {
   return slots;
 }
 
+function lifeBlockRangesForDate(date, state) {
+  const blocks = state || loadLifeBlocks();
+  const ranges = [];
+  const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const daySlug = weekdaySlug(normalized);
+
+  for (const block of blocks.one_off || []) {
+    const blockDate = parseDate(block.date);
+    if (!blockDate || blockDate.getTime() !== normalized.getTime()) continue;
+    const start = parseTime(block.start);
+    const end = parseTime(block.end);
+    if (!start || !end) continue;
+    const startDt = new Date(normalized);
+    startDt.setHours(start.hour, start.minute, 0, 0);
+    const endDt = new Date(normalized);
+    endDt.setHours(end.hour, end.minute, 0, 0);
+    if (endDt <= startDt) continue;
+    ranges.push({ start: startDt, end: endDt });
+  }
+
+  for (const block of blocks.weekly || []) {
+    const days = (block.days || []).map(normalizeDay);
+    if (!days.includes(daySlug)) continue;
+    const start = parseTime(block.start);
+    const end = parseTime(block.end);
+    if (!start || !end) continue;
+    const startDt = new Date(normalized);
+    startDt.setHours(start.hour, start.minute, 0, 0);
+    const endDt = new Date(normalized);
+    endDt.setHours(end.hour, end.minute, 0, 0);
+    if (endDt <= startDt) continue;
+    ranges.push({ start: startDt, end: endDt });
+  }
+
+  return ranges;
+}
+
 class Scheduler {
   constructor() {
     this.tasks = [];
@@ -1862,6 +1905,8 @@ class Scheduler {
     this.blockedSlots = new Set();
     this.recurringSlots = new Set();
     this.lifeBlockCache = new Map();
+    this.lifeBlockState = null;
+    this.lifeBlockRangesCache = new Map();
   }
 
   async fetchTasks() {
@@ -1899,7 +1944,8 @@ class Scheduler {
     this.blockedSlots = new Set();
     this.recurringSlots = new Set();
     this.lifeBlockCache = new Map();
-    for (const slot of blockedSlotsForDate(this.today)) {
+    const state = this.lifeBlockState || loadLifeBlocks();
+    for (const slot of blockedSlotsForDate(this.today, state)) {
       this.blockedSlots.add(slot);
     }
 
@@ -1925,9 +1971,37 @@ class Scheduler {
   getLifeBlocksForDate(date) {
     const key = date.getTime();
     if (this.lifeBlockCache.has(key)) return this.lifeBlockCache.get(key);
-    const slots = blockedSlotsForDate(date);
+    const state = this.lifeBlockState || loadLifeBlocks();
+    const slots = blockedSlotsForDate(date, state);
     this.lifeBlockCache.set(key, slots);
     return slots;
+  }
+
+  getLifeBlockRanges(date) {
+    const key = startOfDay(date.getTime());
+    if (this.lifeBlockRangesCache.has(key)) return this.lifeBlockRangesCache.get(key);
+    const ranges = lifeBlockRangesForDate(date, this.lifeBlockState);
+    this.lifeBlockRangesCache.set(key, ranges);
+    return ranges;
+  }
+
+  isTaskBlockedByLifeBlock(task) {
+    if (!task.due || !task.due.datetime) return false;
+    const due = getTaskDate(task);
+    if (!due) return false;
+    const ranges = this.getLifeBlockRanges(due);
+    if (ranges.length === 0) return false;
+    const durationMinutes = getTaskDurationEstimate(task);
+    const numBlocks = Math.max(1, Math.ceil(durationMinutes / INTERVAL_MINUTES));
+    for (let i = 0; i < numBlocks; i += 1) {
+      const slot = new Date(due.getTime() + i * INTERVAL_MINUTES * 60_000);
+      for (const range of ranges) {
+        if (slot >= range.start && slot < range.end) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   async rescheduleOverdueRecurring() {
@@ -2012,6 +2086,10 @@ class Scheduler {
       } else if (taskDue < this.today) {
         bad.push(task);
       } else if (isSameDay(taskDue, this.today)) {
+        if (this.isTaskBlockedByLifeBlock(task)) {
+          bad.push(task);
+          continue;
+        }
         const duration = parseDuration(task.description || "");
         if (duration && this.isCurrentSlotValid(task, duration)) {
           continue;
@@ -2126,6 +2204,8 @@ class Scheduler {
 
   async run() {
     this.today = nowDate();
+    this.lifeBlockState = loadLifeBlocks();
+    this.lifeBlockRangesCache = new Map();
     await this.fetchTasks();
     await this.applyAutoPriorities();
     this.buildBlockedTimes();
@@ -2465,12 +2545,30 @@ function startLoops() {
 }
 
 ipcMain.handle("get-life-blocks", () => loadLifeBlocks());
-ipcMain.handle("save-life-blocks", (_event, data) => {
+ipcMain.handle("save-life-blocks", async (_event, data) => {
   saveLifeBlocks(data);
   logUsage("life_blocks_save", {
     weekly: (data.weekly || []).length,
     one_off: (data.one_off || []).length,
   });
+
+  if (!schedulerInstance) {
+    schedulerInstance = new Scheduler();
+  }
+
+  try {
+    await schedulerInstance.run();
+    schedulerStatus.lastRun = new Date().toISOString();
+    schedulerStatus.lastError = null;
+    saveSchedulerStatus();
+    logUsage("life_blocks_scheduler_run", { ok: true });
+  } catch (err) {
+    log(`Scheduler run after life block save failed: ${err}`);
+    schedulerStatus.lastError = String(err);
+    saveSchedulerStatus();
+    logUsage("life_blocks_scheduler_run", { ok: false, error: String(err) });
+  }
+
   return { ok: true };
 });
 
