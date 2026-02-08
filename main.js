@@ -228,8 +228,10 @@ lastNotificationAt = persistedStatus.lastNotificationAt || null;
 
 const logFile = path.join(LOG_DIR, "electron.log");
 function log(message) {
-  const line = `[${new Date().toISOString()}] ${message}${os.EOL}`;
+  const timestamped = `[${new Date().toISOString()}] ${message}`;
+  const line = `${timestamped}${os.EOL}`;
   fs.appendFileSync(logFile, line);
+  console.log(timestamped);
 }
 
 log("Electron main starting");
@@ -1522,10 +1524,6 @@ async function openrouterChat(system, prompt, maxTokens, sortBy = "latency") {
         ],
         max_tokens: maxTokens,
         temperature: 0,
-        provider: {
-          "name": "OpenAI",
-          "allow_fallbacks": false,
-        },
       }),
     });
     const endTime = Date.now();
@@ -2205,6 +2203,8 @@ class Scheduler {
   async run() {
     this.today = nowDate();
     this.lifeBlockState = loadLifeBlocks();
+    const blocks = this.lifeBlockState || { one_off: [], weekly: [] };
+    console.log(`Scheduler run: loaded ${blocks.one_off.length} one-off and ${blocks.weekly.length} weekly life blocks`);
     this.lifeBlockRangesCache = new Map();
     await this.fetchTasks();
     await this.applyAutoPriorities();
