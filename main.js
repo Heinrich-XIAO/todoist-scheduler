@@ -2638,6 +2638,31 @@ ipcMain.handle("defer-task", (_event, payload) => {
   return { ok: true, snoozeCount };
 });
 
+ipcMain.handle("set-task-duration", async (_event, payload = {}) => {
+  const { taskId, minutes, description = "", taskName = "" } = payload || {};
+  const normalized = normalizeManualDuration(Number(minutes));
+  if (!taskId || !Number.isFinite(normalized) || normalized <= 0) {
+    return { ok: false, error: "Invalid duration" };
+  }
+  try {
+    const updatedDescription = addDurationToDescription(description, normalized, true);
+    await todoistFetch(`/tasks/${taskId}`, {
+      method: "POST",
+      body: JSON.stringify({ description: updatedDescription }),
+    });
+    logUsage("task_duration_manual", {
+      task_id: taskId,
+      task_name: taskName || "",
+      minutes: normalized,
+      source: "queue",
+    });
+    return { ok: true };
+  } catch (err) {
+    log(`set-task-duration: ${err}`);
+    return { ok: false, error: String(err) };
+  }
+});
+
 ipcMain.handle("postpone-task", async (_event, payload) => {
   const { taskId, taskName, description, mode, elapsedSeconds, estimatedMinutes, reason } = payload;
   log(

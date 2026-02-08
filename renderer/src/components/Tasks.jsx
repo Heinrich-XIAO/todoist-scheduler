@@ -5,6 +5,7 @@ import { Button } from "./ui/button.jsx";
 import { Alert } from "./ui/alert.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Input } from "./ui/input.jsx";
+import { DurationModal } from "./DurationModal.jsx";
 import { PostponeModal } from "./PostponeModal.jsx";
 import { ArrowLeft, Calendar, Check } from "./ui/icons.jsx";
 import { MarkdownText } from "./ui/markdown.jsx";
@@ -87,6 +88,9 @@ export default function Tasks() {
   const [postponeReason, setPostponeReason] = useState("");
   const [postponeWhen, setPostponeWhen] = useState("");
   const [postponeSubmitting, setPostponeSubmitting] = useState(false);
+  const [durationEditorTask, setDurationEditorTask] = useState(null);
+  const [durationEditorMinutes, setDurationEditorMinutes] = useState("");
+  const [durationEditorSubmitting, setDurationEditorSubmitting] = useState(false);
 
   const handleBack = (event) => {
     event.preventDefault();
@@ -107,6 +111,83 @@ export default function Tasks() {
       return;
     }
     setTasks(res.tasks || []);
+  };
+
+  const openDurationEditor = (task) => {
+    if (!task) return;
+    const badge = getDurationBadge(task.description);
+    const badgeMinutes = badge?.duration
+      ? Number.parseInt(badge.duration.replace(/\D/g, ""), 10)
+      : null;
+    const minutes = Number.isFinite(Number(task.duration_minutes))
+      ? Number(task.duration_minutes)
+      : Number.isFinite(badgeMinutes)
+      ? badgeMinutes
+      : null;
+    setDurationEditorMinutes(minutes ? String(minutes) : "");
+    setDurationEditorTask(task);
+  };
+
+  const closeDurationEditor = () => {
+    setDurationEditorTask(null);
+    setDurationEditorMinutes("");
+    setDurationEditorSubmitting(false);
+  };
+
+  const handleDurationSave = async () => {
+    if (!durationEditorTask) return;
+    const minutes = Number(durationEditorMinutes);
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    setDurationEditorSubmitting(true);
+    try {
+      const res = await api.setTaskDuration({
+        taskId: durationEditorTask.id,
+        minutes,
+        description: durationEditorTask.description || "",
+        taskName: durationEditorTask.content,
+      });
+      if (!res?.ok) {
+        throw new Error(res?.error || "Failed to update duration.");
+      }
+      toast.success("Duration updated");
+      await loadQueue();
+      closeDurationEditor();
+    } catch (err) {
+      toast.error(err?.message || "Failed to update duration.");
+    } finally {
+      setDurationEditorSubmitting(false);
+    }
+  };
+
+  const renderDurationBadge = (task, durationBadge) => {
+    const fallbackMinutes = Number.isFinite(Number(task.duration_minutes))
+      ? Number(task.duration_minutes)
+      : null;
+    const durationText = durationBadge?.duration || (fallbackMinutes ? `${fallbackMinutes}m` : null);
+    if (!durationText) return null;
+    const colorClass = durationBadge?.colorClass || "text-zinc-400 border-zinc-600";
+    const label = durationBadge?.label;
+    const title = label ? `${label} length task` : undefined;
+    const editable = api.isAvailable();
+    return (
+      <button
+        type="button"
+        onClick={() => editable && openDurationEditor(task)}
+        disabled={!editable}
+        className={`flex items-center gap-1 rounded-md px-0.5 py-0.5 text-xs font-medium transition ${
+          editable
+            ? "hover:bg-white/5 focus-visible:outline focus-visible:ring-2 focus-visible:ring-emerald-500"
+            : "cursor-not-allowed opacity-50"
+        }`}
+        aria-label={`Edit duration for ${task.content}`}
+        title={title}
+      >
+        <Badge variant="outline" className={`text-xs px-1.5 py-0.5 ${colorClass}`}>
+          {durationText}
+          {label && <span className="ml-1 opacity-70">({label})</span>}
+        </Badge>
+      </button>
+    );
   };
 
   const completeTask = async (taskId) => {
@@ -349,25 +430,16 @@ export default function Tasks() {
                        </div>
                      </div>
                       <div className="flex items-center gap-2 shrink-0">
-                         {(() => {
-                           const timeDisplay = formatTimeDisplay(task.due, true, false);
-                           const durationBadge = getDurationBadge(task.description);
+                        {(() => {
+                          const timeDisplay = formatTimeDisplay(task.due, true, false);
+                          const durationBadge = getDurationBadge(task.description);
                           return (
                             <>
                               <span className={`text-xs font-medium ${timeDisplay.colorClass}`}>
                                 {timeDisplay.text}
                                 {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
                               </span>
-                              {durationBadge && (
-                                <Badge
-                                  variant="outline"
-                                  className={`text-xs px-1.5 py-0.5 ${durationBadge.colorClass || "text-zinc-400"}`}
-                                  title={durationBadge.isFixed !== null ? `${durationBadge.label} length task` : undefined}
-                                >
-                                  {durationBadge.duration}
-                                  {durationBadge.label && <span className="ml-1 opacity-70">({durationBadge.label})</span>}
-                                </Badge>
-                              )}
+                              {renderDurationBadge(task, durationBadge)}
                             </>
                           );
                         })()}
@@ -448,16 +520,7 @@ export default function Tasks() {
                                 {timeDisplay.text}
                                 {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
                               </span>
-                              {durationBadge && (
-                                <Badge
-                                  variant="outline"
-                                  className={`text-xs px-1.5 py-0.5 ${durationBadge.colorClass || "text-zinc-400"}`}
-                                  title={durationBadge.isFixed !== null ? `${durationBadge.label} length task` : undefined}
-                                >
-                                  {durationBadge.duration}
-                                  {durationBadge.label && <span className="ml-1 opacity-70">({durationBadge.label})</span>}
-                                </Badge>
-                              )}
+                              {renderDurationBadge(task, durationBadge)}
                             </>
                           );
                         })()}
@@ -538,16 +601,7 @@ export default function Tasks() {
                                 {timeDisplay.text}
                                 {task.is_recurring && <Repeat className="h-3 w-3 inline ml-1" />}
                               </span>
-                              {durationBadge && (
-                                <Badge
-                                  variant="outline"
-                                  className={`text-xs px-1.5 py-0.5 ${durationBadge.colorClass || "text-zinc-400"}`}
-                                  title={durationBadge.isFixed !== null ? `${durationBadge.label} length task` : undefined}
-                                >
-                                  {durationBadge.duration}
-                                  {durationBadge.label && <span className="ml-1 opacity-70">({durationBadge.label})</span>}
-                                </Badge>
-                              )}
+                              {renderDurationBadge(task, durationBadge)}
                             </>
                           );
                         })()}
@@ -594,6 +648,15 @@ export default function Tasks() {
 
         </div>
 
+        <DurationModal
+          open={Boolean(durationEditorTask)}
+          taskName={durationEditorTask?.content}
+          minutes={durationEditorMinutes}
+          onMinutesChange={setDurationEditorMinutes}
+          onCancel={closeDurationEditor}
+          onSubmit={handleDurationSave}
+          submitting={durationEditorSubmitting}
+        />
         <PostponeModal
           open={Boolean(postponeTask)}
           title="Postpone Task"

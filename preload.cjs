@@ -140,6 +140,7 @@ if (isE2E) {
     startQueueTask: async () => ({ ok: true }),
     startQuickTask: async () => ({ ok: true }),
     closeQuickWindow: async () => ({ ok: true }),
+    setTaskDuration: async () => ({ ok: true }),
     setOverlayPosition: async () => ({ ok: true }),
     moveOverlayBy: async () => ({ ok: true }),
     showCornerCompletionPopup: async () => ({ ok: true }),
@@ -193,6 +194,7 @@ if (isE2E) {
     openNextTaskPopup: (payload) =>
       ipcRenderer.invoke("overlay-open-next-task-popup", payload),
     closeNextTaskPopup: () => ipcRenderer.invoke("overlay-close-next-task-popup"),
+    setTaskDuration: (payload) => ipcRenderer.invoke("set-task-duration", payload),
     onNextTaskPopupAction: (handler) => {
       const listener = (_event, payload) => handler(payload);
       ipcRenderer.on("overlay-next-task-popup-action", listener);

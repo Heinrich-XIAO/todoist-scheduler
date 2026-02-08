@@ -28,6 +28,7 @@ const fallback = {
   startQueueTask: async () => ({ ok: false }),
   startQuickTask: async () => ({ ok: false }),
   closeQuickWindow: async () => ({ ok: false }),
+  setTaskDuration: async () => ({ ok: false }),
   showCornerCompletionPopup: async () => ({ ok: false }),
   openNextTaskPopup: async () => ({ ok: false }),
   closeNextTaskPopup: async () => ({ ok: false }),
@@ -84,6 +85,7 @@ const api = {
   startQueueTask: (payload) => current().startQueueTask(payload),
   startQuickTask: (payload) => current().startQuickTask(payload),
   closeQuickWindow: () => current().closeQuickWindow(),
+  setTaskDuration: (payload) => current().setTaskDuration(payload),
   onOverlayMode: (handler) => current().onOverlayMode(handler),
   onOverlayCornerAnchor: (handler) => current().onOverlayCornerAnchor(handler),
 };
