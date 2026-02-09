@@ -606,8 +606,9 @@ function setOverlayMode(mode) {
     }
   } else if (mode === "completion") {
     overlayWindow.setBackgroundColor("#0b0b0b");
-    overlayWindow.setResizable(false);
-    overlayWindow.setSize(400, 250);
+    console.log("testing testing")
+    overlayWindow.setResizable(true);
+    overlayWindow.setSize(400, 500);
     overlayWindow.center();
     overlayWindow.setAlwaysOnTop(true, "screen-saver");
   } else if (mode === "break") {

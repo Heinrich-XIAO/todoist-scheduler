@@ -400,6 +400,7 @@ export default function Overlay() {
     }
     const completedTaskContent = task.content;
     await api.completeTask(task.id);
+    setTimerStarted(false);
     if (mode === "corner") {
       setCompletedTask({ content: completedTaskContent, elapsed });
       setMode("completion");
@@ -413,14 +414,16 @@ export default function Overlay() {
   };
 
   if (!task) {
-    return (
-      <div
-        className="h-screen flex items-center justify-center text-zinc-400"
-        data-testid="page-overlay"
-      >
-        {api.isAvailable() ? "Waiting for task..." : "Overlay preview only in Electron"}
-      </div>
-    );
+    // setSessionStarted(false);
+    return;
+    // return (
+    //   <div
+    //     className="h-screen flex items-center justify-center text-zinc-400"
+    //     data-testid="page-overlay"
+    //   >
+    //     {api.isAvailable() ? "Waiting for task..." : "Overlay preview only in Electron"}
+    //   </div>
+    // );
   }
 
   const progressColor = progress >= 100 ? "bg-amber-500" : "bg-emerald-500/30";
@@ -444,14 +447,15 @@ export default function Overlay() {
         setDragging(true);
       }}
     >
-      {/* Progress bar background */}
-      <div 
-        className={`absolute inset-0 ${progressColor} transition-all duration-1000 ease-linear`}
-        style={{ 
-          width: `${Math.min(progress, 100)}%`,
-          zIndex: 0 
-        }}
-      />
+      {mode !== "completion" && mode !== "break" && (
+        <div 
+          className={`absolute inset-0 ${progressColor} transition-all duration-1000 ease-linear`}
+          style={{ 
+            width: `${Math.min(progress, 100)}%`,
+            zIndex: 0 
+          }}
+        />
+      )}
       {mode === "corner" && dragging && anchorLines && (
         <div className="corner-guide-container">
           <div
