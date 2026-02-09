@@ -204,13 +204,13 @@ export default function Overlay() {
 
   const progress = useMemo(() => {
     if (!task?.estimatedMinutes) return 0;
-    const total = (task.estimatedMinutes + extendedMinutes) * 60;
-    return Math.min(100, (elapsed / total) * 100);
+    const total = (task.estimatedMinutes) * 60;
+    return Math.min(100, ((elapsed - extendedMinutes*60) / total) * 100);
   }, [elapsed, task, extendedMinutes]);
   const remaining = useMemo(() => {
     if (!task?.estimatedMinutes) return 0;
-    const total = (task.estimatedMinutes + extendedMinutes) * 60;
-    return Math.max(0, total - elapsed);
+    const total = (task.estimatedMinutes) * 60;
+    return Math.max(0, total - (elapsed - extendedMinutes*60));
   }, [elapsed, task, extendedMinutes]);
   const anchorLines = useMemo(() => {
     if (!cornerAnchor) return null;
@@ -382,7 +382,9 @@ export default function Overlay() {
 
   const onTimerExtend = async () => {
     setExtending(true);
-    setExtendedMinutes((prev) => prev + (task.estimatedMinutes || 30));
+    console.log(task.estimatedMinutes)
+    console.log(elapsed/60)
+    setExtendedMinutes(() => elapsed/60);
     setTimerCompleteOpen(false);
     setExtending(false);
   };
