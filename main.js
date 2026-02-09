@@ -692,6 +692,9 @@ async function startQueueTaskInternal(payload) {
         );
         return { ok: false, reason: "overlay-active" };
       }
+      log('something')
+      log(!!overlayWindow)
+      log(!!overlayTask)
     }
     let estimateMinutes = null;
     if (Number.isFinite(payload?.estimatedMinutes)) {
@@ -1556,7 +1559,7 @@ let responseText = data?.choices?.[0]?.message?.content || "";
   log(`OpenRouter timing: latency=${latencyMs}ms tokens=${tokenCount} throughput=${throughput}tok/s sort=${sortBy}`);
 
   if (!responseText) {
-    log(`OpenRouter response missing content: ${JSON.stringify(data).slice(0, 500)}`);
+    log(`OpenRouter response missing content: ${JSON.stringify(data)}`);
   }
   return responseText || null;
   } catch (err) {
