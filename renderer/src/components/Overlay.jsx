@@ -497,6 +497,23 @@ export default function Overlay() {
             Close
           </Button>
         </div>
+      ) : mode === "break" ? (
+        <div className="h-full w-full bg-ink/95 text-white flex flex-col items-center justify-center gap-8 relative z-10 p-8">
+          <div className="text-6xl">🌙</div>
+          <h1 className="text-5xl font-semibold text-center">Break Time</h1>
+          <p className="text-xl text-zinc-300 text-center max-w-2xl">
+            You're in do not disturb mode. No new tasks will be shown until you exit.
+          </p>
+          <Button
+            size="lg"
+            onClick={async () => {
+              await api.setBreakMode(false);
+              await api.showMainWindow();
+            }}
+          >
+            Exit Break Mode
+          </Button>
+        </div>
       ) : mode === "corner" ? (
           <>
             <div 

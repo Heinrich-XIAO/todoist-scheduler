@@ -33,6 +33,7 @@ if (isE2E) {
   let snoozeCount = 0;
   let autostartInstalled = false;
   let legacyPids = [4321];
+  let breakMode = false;
 
   const queueTasks = [
     {
@@ -91,6 +92,12 @@ if (isE2E) {
       if (overlayHandler) overlayHandler(mode);
       return { ok: true };
     },
+    setBreakMode: async (enable) => {
+      breakMode = Boolean(enable);
+      return { ok: true, breakMode };
+    },
+    getBreakMode: async () => ({ breakMode }),
+    showMainWindow: async () => ({ ok: true }),
     completeTask: async () => ({ ok: true }),
     snoozeTask: async () => {
       snoozeCount += 1;
@@ -162,6 +169,9 @@ if (isE2E) {
     saveLifeBlocks: (data) => ipcRenderer.invoke("save-life-blocks", data),
     getOverlayTask: () => ipcRenderer.invoke("get-overlay-task"),
     setOverlayMode: (mode) => ipcRenderer.invoke("set-overlay-mode", mode),
+    setBreakMode: (enable) => ipcRenderer.invoke("set-break-mode", enable),
+    getBreakMode: () => ipcRenderer.invoke("get-break-mode"),
+    showMainWindow: () => ipcRenderer.invoke("show-main-window"),
     completeTask: (taskId) => ipcRenderer.invoke("complete-task", taskId),
     snoozeTask: (payload) => ipcRenderer.invoke("snooze-task", payload),
     deferTask: (payload) => ipcRenderer.invoke("defer-task", payload),

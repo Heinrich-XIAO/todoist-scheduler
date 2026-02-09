@@ -196,6 +196,7 @@ let quickWindow = null;
 let overlayTask = null;
 let overlayMode = "full";
 let overlayCornerAnchor = null;
+let breakMode = false;
 let nextTaskWindow = null;
 let nextTaskWindowReady = false;
 let nextTaskPopupPayload = null;
@@ -608,6 +609,11 @@ function setOverlayMode(mode) {
     overlayWindow.setResizable(false);
     overlayWindow.setSize(400, 250);
     overlayWindow.center();
+    overlayWindow.setAlwaysOnTop(true, "screen-saver");
+  } else if (mode === "break") {
+    overlayWindow.setBackgroundColor("#0b0b0b");
+    overlayWindow.setResizable(false);
+    overlayWindow.setFullScreen(true);
     overlayWindow.setAlwaysOnTop(true, "screen-saver");
   } else {
     overlayWindow.setBackgroundColor("#0b0b0b");
@@ -2337,6 +2343,7 @@ async function notifyTask(task) {
 }
 
 async function checkAndNotify() {
+  if (breakMode) return;
   const now = new Date();
   const today = nowDate();
   const state = loadOverlayState();
@@ -2431,6 +2438,7 @@ async function checkAndNotify() {
 }
 
 async function checkSnoozedTasks() {
+  if (breakMode) return;
   const state = loadOverlayState();
   const now = Date.now();
   if (state.sleep_until && now < Number(state.sleep_until)) {
@@ -2461,6 +2469,7 @@ async function checkSnoozedTasks() {
 }
 
 async function checkQueueSuggestion() {
+  if (breakMode) return;
   if (overlayWindow || overlayTask) return;
   const state = loadOverlayState();
   const now = Date.now();
@@ -2588,6 +2597,33 @@ ipcMain.handle("get-overlay-task", () => {
 ipcMain.handle("set-overlay-mode", (_event, mode) => {
   setOverlayMode(mode);
   logUsage("overlay_mode", { mode });
+  return { ok: true };
+});
+
+ipcMain.handle("set-break-mode", (_event, enable) => {
+  breakMode = Boolean(enable);
+  if (breakMode) {
+    ensureOverlayWindow();
+    setOverlayMode("break");
+    logUsage("break_mode_start");
+  } else {
+    logUsage("break_mode_end");
+    if (overlayWindow) {
+      overlayWindow.close();
+    }
+  }
+  return { ok: true, breakMode };
+});
+
+ipcMain.handle("get-break-mode", () => {
+  return { breakMode };
+});
+
+ipcMain.handle("show-main-window", () => {
+  if (!mainWindow) {
+    createMainWindow();
+  }
+  mainWindow.show();
   return { ok: true };
 });
 

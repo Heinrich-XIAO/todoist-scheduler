@@ -2,6 +2,7 @@ import React from "react";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card.jsx";
 import { buttonVariants } from "./ui/button.jsx";
 import { cn } from "../lib/utils.js";
+import api from "../bridge.js";
 
 const cards = [
   {
@@ -32,6 +33,9 @@ const cards = [
 ];
 
 export default function Home() {
+  const handleStartBreak = async () => {
+    await api.setBreakMode(true);
+  };
   const handleNavigate = (event, route) => {
     event.preventDefault();
     window.history.pushState({}, "", route);
@@ -46,8 +50,14 @@ export default function Home() {
           <p className="text-zinc-400 mt-2">
             This Electron app replaces the Python daemons and runs scheduling locally.
           </p>
+          <button
+            onClick={handleStartBreak}
+            className={cn(buttonVariants({ variant: "default" }))}
+          >
+            Start Break Mode (Do Not Disturb)
+          </button>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
           {cards.map((card) => (
             <Card key={card.title} className="hover:border-accent transition">
               <CardHeader>
